@@ -13,6 +13,7 @@ using GatherBuddy.Crafting;
 using GatherBuddy.Vulcan;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Dalamud.Plugin.Services;
+using Newtonsoft.Json;
 
 namespace GatherBuddy.Gui;
 
@@ -37,6 +38,7 @@ public class RecipeCraftSettingsPopup
     private string _foodSearch = string.Empty;
     private string _medicineSearch = string.Empty;
     private string _macroSearch = string.Empty;
+    private string? _clipboardError;
 
     private MacroValidationResult? _validationResult;
     private string? _resolvedMacroId;
@@ -288,6 +290,26 @@ public class RecipeCraftSettingsPopup
                 _isOpen = false;
             }
 
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            if (ImGui.Button("导出 JSON", ActionButtonSize))
+                ExportSettingsToClipboard();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("将当前成品/半成品的制作设置导出为可编辑 JSON，并复制到剪贴板");
+
+            ImGui.SameLine();
+            if (ImGui.Button("从剪贴板导入", ActionButtonSize))
+                ImportSettingsFromClipboard();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("读取剪贴板中的 RecipeCraftSettings JSON，替换当前弹窗中的设置");
+
+            if (!string.IsNullOrEmpty(_clipboardError))
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ImGuiColors.DalamudRed, _clipboardError);
+            }
+
             ImGui.End();
         }
 
@@ -295,8 +317,62 @@ public class RecipeCraftSettingsPopup
             _activeInstanceId = 0;
     }
 
+    private void ExportSettingsToClipboard()
+    {
+        try
+        {
+            var settings = BuildPersistedSettings() ?? new RecipeCraftSettings();
+            var json = JsonConvert.SerializeObject(settings, Formatting.Indented);
+            ImGui.SetClipboardText(json);
+            _clipboardError = null;
+            GatherBuddy.Log.Information($"[RecipeCraftSettingsPopup] Exported settings for recipe {_recipeId} to clipboard");
+        }
+        catch (Exception ex)
+        {
+            _clipboardError = $"导出失败: {ex.Message}";
+            GatherBuddy.Log.Error($"[RecipeCraftSettingsPopup] Failed to export settings for recipe {_recipeId}: {ex}");
+        }
+    }
+
+    private void ImportSettingsFromClipboard()
+    {
+        try
+        {
+            var json = ImGui.GetClipboardText();
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                _clipboardError = "导入失败: 剪贴板为空。";
+                return;
+            }
+
+            var settings = JsonConvert.DeserializeObject<RecipeCraftSettings>(json);
+            if (settings == null)
+            {
+                _clipboardError = "导入失败: JSON 中没有有效的制作设置。";
+                return;
+            }
+
+            _editingSettings = settings;
+            LoadIngredients();
+            ResetValidationState();
+            _clipboardError = null;
+            GatherBuddy.Log.Information($"[RecipeCraftSettingsPopup] Imported settings for recipe {_recipeId} from clipboard");
+        }
+        catch (JsonException ex)
+        {
+            _clipboardError = $"导入失败: JSON 格式无效（{ex.Message}）";
+            GatherBuddy.Log.Warning($"[RecipeCraftSettingsPopup] Invalid settings JSON for recipe {_recipeId}: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            _clipboardError = $"导入失败: {ex.Message}";
+            GatherBuddy.Log.Error($"[RecipeCraftSettingsPopup] Failed to import settings for recipe {_recipeId}: {ex}");
+        }
+    }
+
     private void ResetValidationState()
     {
+        _clipboardError              = null;
         _validationResult             = null;
         _resolvedMacroId              = null;
         _lastValidatedMacroId         = null;

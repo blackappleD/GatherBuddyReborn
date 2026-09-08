@@ -44,8 +44,7 @@ public static class CraftingContextResolver
         var hasCraftedBefore = HasRecipeCraftedBefore(recipe);
         var useQuickSynthesis = item.Options.NQOnly && recipe.CanQuickSynth && hasCraftedBefore;
         var forceProgressOnlyUnlockCraft = item.Options.NQOnly
-            && recipe.CanQuickSynth
-            && !hasCraftedBefore
+            && !useQuickSynthesis
             && qualityPolicy.OverrideMode == CraftingQualityOverrideMode.RequireNQOnly;
         var craftSolverOverride = forceProgressOnlyUnlockCraft
             ? SolverOverrideMode.ProgressOnlySolver
@@ -91,6 +90,21 @@ public static class CraftingContextResolver
             return false;
         }
 
+        return TryResolveListExecutionContext(list, sourceItem, out context);
+    }
+
+    public static bool TryResolveListExecutionContext(
+        CraftingListDefinition list,
+        uint recipeId,
+        bool isOriginalRecipe,
+        PlannedOutputQuality outputQuality,
+        out CraftingExecutionContext context)
+    {
+        context = null!;
+        if (!TryCreateListSourceItem(list, recipeId, isOriginalRecipe, out var sourceItem))
+            return false;
+
+        sourceItem.OutputQuality = outputQuality;
         return TryResolveListExecutionContext(list, sourceItem, out context);
     }
 
@@ -152,6 +166,7 @@ public static class CraftingContextResolver
             ConsumableOverrides = sourceItem.ConsumableOverrides.Clone(),
             IsOriginalRecipe = sourceItem.IsOriginalRecipe,
             CraftSettings = useSourceSettingsOverride ? sourceSettingsOverride?.Clone() : sourceItem.CraftSettings?.Clone(),
+            OutputQuality = sourceItem.OutputQuality,
         };
         var effectiveItem = BuildEffectiveListExecutionItem(normalizedSourceItem, recipe.Value, list);
         context = ResolveExecutionContext(effectiveItem, recipe.Value, list.Consumables);
@@ -354,6 +369,8 @@ public static class CraftingContextResolver
 
     private static CraftingListItem BuildEffectiveListExecutionItem(CraftingListItem sourceItem, Recipe recipe, CraftingListDefinition list)
     {
+        var requireHQOutput = !sourceItem.IsOriginalRecipe && sourceItem.OutputQuality == PlannedOutputQuality.HQ;
+        var requireNQOutput = !sourceItem.IsOriginalRecipe && sourceItem.OutputQuality == PlannedOutputQuality.NQ;
         var (effectiveMacroId, effectiveSolverOverride) = CraftingListQueueBuilder.ResolveEffectiveMacroSelection(
             sourceItem.CraftSettings,
             !sourceItem.IsOriginalRecipe,
@@ -364,23 +381,30 @@ public static class CraftingContextResolver
             effectiveMacroId,
             effectiveSolverOverride,
             list.UseAllHQ,
-            !recipe.CanQuickSynth && list.ShouldForcePreferNQ(sourceItem.IsOriginalRecipe));
+            requireNQOutput || !recipe.CanQuickSynth && list.ShouldForcePreferNQ(sourceItem.IsOriginalRecipe));
+        var qualityOverrideMode = requireNQOutput
+            ? CraftingQualityOverrideMode.RequireNQOnly
+            : requireHQOutput
+                ? CraftingQualityOverrideMode.None
+                : list.GetQualityOverrideMode(recipe, sourceItem.IsOriginalRecipe);
         var qualityPolicy = CraftingQualityPolicyResolver.Resolve(
             recipe,
             effectiveSettings,
-            list.GetQualityOverrideMode(recipe, sourceItem.IsOriginalRecipe));
+            qualityOverrideMode);
         return new(sourceItem.RecipeId, sourceItem.Quantity)
         {
             Options = new ListItemOptions
             {
                 Skipping = sourceItem.Options.Skipping,
-                NQOnly = sourceItem.Options.NQOnly || list.ShouldForceQuickSynth(recipe, sourceItem.IsOriginalRecipe),
+                NQOnly = requireNQOutput
+                    || !requireHQOutput && (sourceItem.Options.NQOnly || list.ShouldForceQuickSynth(recipe, sourceItem.IsOriginalRecipe)),
             },
             IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
             ConsumableOverrides = sourceItem.ConsumableOverrides.Clone(),
             IsOriginalRecipe = sourceItem.IsOriginalRecipe,
             CraftSettings = effectiveSettings,
             QualityPolicy = qualityPolicy,
+            OutputQuality = sourceItem.OutputQuality,
         };
     }
 

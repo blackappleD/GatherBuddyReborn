@@ -93,6 +93,7 @@ public class CraftingListItem
     public bool IsOriginalRecipe { get; set; } = false;
     public RecipeCraftSettings? CraftSettings { get; set; }
     [JsonIgnore] public CraftingQualityPolicy? QualityPolicy { get; set; }
+    [JsonIgnore] public PlannedOutputQuality OutputQuality { get; set; } = PlannedOutputQuality.Unknown;
 
     public CraftingListItem(uint recipeId, int quantity)
     {

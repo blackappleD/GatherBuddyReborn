@@ -138,8 +138,8 @@ public static class CraftingListPlanner
                 return;
 
             var craftCount = DivideRoundUp(remainingItemCount, (int)recipe.AmountResult);
-            AddRecipe(_plan.OriginalRecipes, item.RecipeId, craftCount, true);
-            AddRecipe(_plan.Recipes, item.RecipeId, craftCount, true);
+            AddRecipe(_plan.OriginalRecipes, item.RecipeId, craftCount, true, PlannedOutputQuality.Unknown);
+            AddRecipe(_plan.Recipes, item.RecipeId, craftCount, true, PlannedOutputQuality.Unknown);
 
             var surplus = craftCount * (int)recipe.AmountResult - remainingItemCount;
             _availability.AddPlanned(resultItemId, surplus);
@@ -187,15 +187,79 @@ public static class CraftingListPlanner
             if (remainingDemand.Total <= 0)
                 return;
 
-            var craftCount = DivideRoundUp(remainingDemand.Total, (int)recipe.AmountResult);
-            AddRecipe(_plan.Recipes, recipe.RowId, craftCount, false);
+            var amountResult = Math.Max(1, (int)recipe.AmountResult);
+            var craftCount = 0;
 
-            var surplus = craftCount * (int)recipe.AmountResult - remainingDemand.Total;
-            var qualityPolicy = ResolveQualityPolicy(recipe, false);
-            var outputQuality = CraftingQualityPolicyResolver.ResolvePlannedOutputQuality(recipe, qualityPolicy, remainingDemand);
-            _availability.AddPlanned(resultItemId, surplus, outputQuality);
+            craftCount += AddPrecraftBatch(recipe.RowId, resultItemId, amountResult, ref remainingDemand,
+                remainingDemand.RequiredHQ, PlannedOutputQuality.HQ);
+            craftCount += AddPrecraftBatch(recipe.RowId, resultItemId, amountResult, ref remainingDemand,
+                remainingDemand.RequiredNQ, PlannedOutputQuality.NQ);
+            craftCount += AddPrecraftBatch(recipe.RowId, resultItemId, amountResult, ref remainingDemand,
+                remainingDemand.PreferNQ, PlannedOutputQuality.NQ);
+            craftCount += AddPrecraftBatch(recipe.RowId, resultItemId, amountResult, ref remainingDemand,
+                remainingDemand.PreferHQ, PlannedOutputQuality.Unknown);
 
             PlanIngredients(recipe, craftCount, false);
+        }
+
+        private int AddPrecraftBatch(
+            uint recipeId,
+            uint resultItemId,
+            int amountResult,
+            ref IngredientQualityDemand remainingDemand,
+            int requestedOutput,
+            PlannedOutputQuality outputQuality)
+        {
+            if (requestedOutput <= 0)
+                return 0;
+
+            var craftCount = DivideRoundUp(requestedOutput, amountResult);
+            var produced = craftCount * amountResult;
+            remainingDemand = ConsumePlannedOutput(remainingDemand, produced, outputQuality, out var consumed);
+            AddRecipe(_plan.Recipes, recipeId, craftCount, false, outputQuality);
+            _availability.AddPlanned(resultItemId, produced - consumed, outputQuality);
+            return craftCount;
+        }
+
+        private static IngredientQualityDemand ConsumePlannedOutput(
+            IngredientQualityDemand demand,
+            int available,
+            PlannedOutputQuality outputQuality,
+            out int consumed)
+        {
+            var requiredHQ = demand.RequiredHQ;
+            var requiredNQ = demand.RequiredNQ;
+            var preferHQ = demand.PreferHQ;
+            var preferNQ = demand.PreferNQ;
+            consumed = 0;
+
+            static void Consume(ref int demandPart, ref int availableAmount, ref int consumedAmount)
+            {
+                var take = Math.Min(demandPart, availableAmount);
+                demandPart -= take;
+                availableAmount -= take;
+                consumedAmount += take;
+            }
+
+            if (outputQuality == PlannedOutputQuality.HQ)
+            {
+                Consume(ref requiredHQ, ref available, ref consumed);
+                Consume(ref preferHQ, ref available, ref consumed);
+                Consume(ref preferNQ, ref available, ref consumed);
+            }
+            else if (outputQuality == PlannedOutputQuality.NQ)
+            {
+                Consume(ref requiredNQ, ref available, ref consumed);
+                Consume(ref preferNQ, ref available, ref consumed);
+                Consume(ref preferHQ, ref available, ref consumed);
+            }
+            else
+            {
+                Consume(ref preferHQ, ref available, ref consumed);
+                Consume(ref preferNQ, ref available, ref consumed);
+            }
+
+            return new IngredientQualityDemand(requiredHQ, requiredNQ, preferHQ, preferNQ);
         }
 
         private Recipe? ResolveSubRecipe(uint itemId)
@@ -219,12 +283,19 @@ public static class CraftingListPlanner
             return CraftingQualityPolicyResolver.Resolve(recipe, effectiveSettings, overrideMode);
         }
 
-        private static void AddRecipe(List<CraftingListItem> target, uint recipeId, int craftCount, bool isOriginalRecipe)
+        private static void AddRecipe(
+            List<CraftingListItem> target,
+            uint recipeId,
+            int craftCount,
+            bool isOriginalRecipe,
+            PlannedOutputQuality outputQuality)
         {
             if (craftCount <= 0)
                 return;
 
-            var existing = target.FirstOrDefault(item => item.RecipeId == recipeId && item.IsOriginalRecipe == isOriginalRecipe);
+            var existing = target.FirstOrDefault(item => item.RecipeId == recipeId
+                && item.IsOriginalRecipe == isOriginalRecipe
+                && item.OutputQuality == outputQuality);
             if (existing != null)
             {
                 existing.Quantity += craftCount;
@@ -234,6 +305,7 @@ public static class CraftingListPlanner
             target.Add(new CraftingListItem(recipeId, craftCount)
             {
                 IsOriginalRecipe = isOriginalRecipe,
+                OutputQuality = outputQuality,
             });
         }
 

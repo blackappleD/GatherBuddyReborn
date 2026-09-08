@@ -1174,15 +1174,16 @@ public class CraftingListEditor
 
             var itemName = recipeData.Value.ItemResult.Value.Name.ExtractText();
             var jobName = GetCraftingJobName(recipeData.Value.CraftType.RowId);
-            var recipeOptions = planningList.GetRecipeOptions(queueItem.RecipeId, queueItem.IsOriginalRecipe);
-            var effectiveQuickSynth = recipeOptions.NQOnly || planningList.ShouldForceQuickSynth(recipeData.Value, queueItem.IsOriginalRecipe);
-            var forceQuickSynth = planningList.ShouldForceQuickSynth(recipeData.Value, queueItem.IsOriginalRecipe);
-            var forcePreferNQNoQuickSynth = !recipeData.Value.CanQuickSynth && planningList.ShouldForcePreferNQ(queueItem.IsOriginalRecipe);
+            var requireHQOutput = !queueItem.IsOriginalRecipe && queueItem.OutputQuality == PlannedOutputQuality.HQ;
+            var requireNQOutput = !queueItem.IsOriginalRecipe && queueItem.OutputQuality == PlannedOutputQuality.NQ;
+            var forceQuickSynth = requireNQOutput && recipeData.Value.CanQuickSynth
+                || !requireHQOutput && planningList.ShouldForceQuickSynth(recipeData.Value, queueItem.IsOriginalRecipe);
             var queueItemCraftSettings = GetEffectiveCraftSettings(queueItem.RecipeId, queueItem.IsOriginalRecipe);
             var hasExecutionContext = CraftingContextResolver.TryResolveListExecutionContext(
                 planningList,
                 queueItem.RecipeId,
                 queueItem.IsOriginalRecipe,
+                queueItem.OutputQuality,
                 out var executionContext);
             var usesQuickSynth = hasExecutionContext
                 ? executionContext.UseQuickSynthesis
@@ -1197,9 +1198,17 @@ public class CraftingListEditor
             if (hasExecutionContext
              && CraftingContextResolver.UsesRaphaelSolver(executionContext))
             {
-                RaphaelAssessmentService.TryAssessListQueueItem(queueItem.RecipeId, queueItem.IsOriginalRecipe, planningList, out var resolvedAssessment);
+                RaphaelAssessmentService.TryAssessListQueueItem(
+                    queueItem.RecipeId,
+                    queueItem.IsOriginalRecipe,
+                    queueItem.OutputQuality,
+                    planningList,
+                    out var resolvedAssessment);
                 raphaelAssessment = resolvedAssessment;
             }
+            var qualityLabel = requireHQOutput ? "[HQ] "
+                : requireNQOutput ? (usesQuickSynth ? "[QS/NQ] " : "[NQ] ")
+                : usesQuickSynth ? "[QS] " : string.Empty;
             rows.Add(new QueueDisplayRow
             {
                 QueueIndex = i,
@@ -1207,13 +1216,15 @@ public class CraftingListEditor
                 IsOriginalRecipe = queueItem.IsOriginalRecipe,
                 Recipe = recipeData.Value,
                 ItemName = itemName,
-                Label = $"{(effectiveQuickSynth ? "[QS] " : forcePreferNQNoQuickSynth ? "[NQ] " : string.Empty)}{i + 1}. {itemName} x{queueItem.Quantity} ({jobName})",
-                BaseTextColor = effectiveQuickSynth
+                Label = $"{qualityLabel}{i + 1}. {itemName} x{queueItem.Quantity} ({jobName})",
+                BaseTextColor = requireHQOutput
+                    ? new Vector4(0.5f, 0.85f, 1.0f, 1f)
+                    : requireNQOutput || usesQuickSynth
                     ? new Vector4(0.3f, 0.9f, 0.9f, 1f)
                     : queueItem.IsOriginalRecipe
                         ? new Vector4(1f, 1f, 1f, 1f)
                         : new Vector4(0.7f, 0.7f, 0.7f, 1f),
-                EffectiveQuickSynth = effectiveQuickSynth,
+                EffectiveQuickSynth = usesQuickSynth,
                 ForceQuickSynth = forceQuickSynth,
                 Validation = validation,
                 RaphaelAssessment = raphaelAssessment,

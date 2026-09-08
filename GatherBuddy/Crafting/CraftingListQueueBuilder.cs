@@ -13,6 +13,7 @@ public static class CraftingListQueueBuilder
             .Select(item => new CraftingListItem(item.RecipeId, item.Quantity)
             {
                 IsOriginalRecipe = item.IsOriginalRecipe,
+                OutputQuality = item.OutputQuality,
             })
             .ToList();
 
@@ -30,18 +31,28 @@ public static class CraftingListQueueBuilder
             if (!recipeData.HasValue)
                 continue;
 
-            var forceQuickSynth = list.ShouldForceQuickSynth(recipeData.Value, isOriginal);
-            var qualityOverrideMode = list.GetQualityOverrideMode(recipeData.Value, isOriginal);
-            var forcePreferNQNoQuickSynth = !recipeData.Value.CanQuickSynth && list.ShouldForcePreferNQ(isOriginal);
+            var requireHQOutput = !isOriginal && recipeItem.OutputQuality == PlannedOutputQuality.HQ;
+            var requireNQOutput = !isOriginal && recipeItem.OutputQuality == PlannedOutputQuality.NQ;
+            var forceQuickSynth = requireNQOutput && recipeData.Value.CanQuickSynth
+                || !requireHQOutput && list.ShouldForceQuickSynth(recipeData.Value, isOriginal);
+            var qualityOverrideMode = requireNQOutput
+                ? CraftingQualityOverrideMode.RequireNQOnly
+                : requireHQOutput
+                    ? CraftingQualityOverrideMode.None
+                    : list.GetQualityOverrideMode(recipeData.Value, isOriginal);
+            var forcePreferNQ = requireNQOutput
+                || !recipeData.Value.CanQuickSynth && list.ShouldForcePreferNQ(isOriginal);
 
             for (var i = 0; i < recipeItem.Quantity; i++)
             {
                 var queueItem = new CraftingListItem(recipeItem.RecipeId, 1)
                 {
                     IsOriginalRecipe = isOriginal,
+                    OutputQuality = recipeItem.OutputQuality,
                 };
 
-                queueItem.Options.NQOnly = recipeOptions.NQOnly || forceQuickSynth;
+                queueItem.Options.NQOnly = requireNQOutput
+                    || !requireHQOutput && (recipeOptions.NQOnly || forceQuickSynth);
                 queueItem.Options.Skipping = recipeOptions.Skipping;
 
                 if (isOriginal && originalItem != null)
@@ -57,7 +68,7 @@ public static class CraftingListQueueBuilder
                     effectiveMacroId,
                     effectiveSolverOverride,
                     list.UseAllHQ,
-                    forcePreferNQNoQuickSynth);
+                    forcePreferNQ);
                 queueItem.QualityPolicy = CraftingQualityPolicyResolver.Resolve(recipeData.Value, queueItem.CraftSettings, qualityOverrideMode);
                 queueItem.IngredientPreferences = queueItem.QualityPolicy.BuildGuaranteedHQPreferences();
 
@@ -172,6 +183,9 @@ public static class CraftingListQueueBuilder
         }
 
         processed.Add(recipeItem.RecipeId);
-        result.Add(recipeItem);
+        result.AddRange(allRecipes
+            .Where(item => item.RecipeId == recipeItem.RecipeId)
+            .OrderBy(item => item.OutputQuality == PlannedOutputQuality.HQ ? 0
+                : item.OutputQuality == PlannedOutputQuality.NQ ? 1 : 2));
     }
 }

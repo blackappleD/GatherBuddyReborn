@@ -77,8 +77,30 @@ public static class RaphaelAssessmentService
     public static bool TryAssessListPrecraft(uint recipeId, CraftingListDefinition list, RecipeCraftSettings? settings, out RaphaelAssessment assessment)
         => TryAssessListContext(recipeId, list, false, settings, out assessment);
 
-    public static bool TryAssessListQueueItem(uint recipeId, bool isOriginalRecipe, CraftingListDefinition list, out RaphaelAssessment assessment)
-        => TryAssessListContext(recipeId, list, isOriginalRecipe, null, out assessment);
+    public static bool TryAssessListQueueItem(
+        uint recipeId,
+        bool isOriginalRecipe,
+        PlannedOutputQuality outputQuality,
+        CraftingListDefinition list,
+        out RaphaelAssessment assessment)
+    {
+        if (!TryGetRecipe(recipeId, out var recipe, out assessment))
+            return false;
+
+        if (IsQualityAgnostic(recipe))
+        {
+            assessment = CreateNotApplicableAssessment(recipe.RowId, null);
+            return true;
+        }
+
+        if (!CraftingContextResolver.TryResolveListExecutionContext(list, recipeId, isOriginalRecipe, outputQuality, out var executionContext))
+        {
+            assessment = CreateUnavailableAssessment(recipeId, null, "List crafting settings could not be resolved.");
+            return false;
+        }
+
+        return TryAssessExecutionContext(recipe, executionContext, out assessment);
+    }
 
     public static bool TryAssessCachedSolution(CachedRaphaelSolution solution, out RaphaelAssessment assessment)
     {
@@ -159,7 +181,12 @@ public static class RaphaelAssessmentService
             if (IsQualityAgnostic(recipe))
                 continue;
 
-            if (!CraftingContextResolver.TryResolveListExecutionContext(list, plannedItem.RecipeId, plannedItem.IsOriginalRecipe, out var executionContext)
+            if (!CraftingContextResolver.TryResolveListExecutionContext(
+                    list,
+                    plannedItem.RecipeId,
+                    plannedItem.IsOriginalRecipe,
+                    plannedItem.OutputQuality,
+                    out var executionContext)
              || !CraftingContextResolver.UsesRaphaelSolver(executionContext))
                 continue;
             if (!TryBuildSimulationContext(recipe, executionContext, out var context))

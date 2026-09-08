@@ -8,6 +8,23 @@ namespace GatherBuddy.Crafting;
 
 public class CraftingListManager
 {
+    private sealed class CraftingListSettingsExport
+    {
+        public int FormatVersion { get; set; } = 1;
+        public int ListId { get; set; }
+        public string ListName { get; set; } = string.Empty;
+        public List<CraftingItemSettingsExport> Recipes { get; set; } = new();
+        public Dictionary<uint, RecipeCraftSettings?> PrecraftCraftSettings { get; set; } = new();
+    }
+
+    private sealed class CraftingItemSettingsExport
+    {
+        public uint RecipeId { get; set; }
+        public RecipeCraftSettings? CraftSettings { get; set; }
+        public Dictionary<uint, int> IngredientPreferences { get; set; } = new();
+        public CraftingListConsumableOverrides ConsumableOverrides { get; set; } = new();
+    }
+
     private List<CraftingListDefinition> _lists = new();
     private readonly HashSet<string> _folders = new(StringComparer.OrdinalIgnoreCase);
 
@@ -512,6 +529,116 @@ public class CraftingListManager
         var json = JsonConvert.SerializeObject(copy, Formatting.None);
         GatherBuddy.Log.Information($"[CraftingListManager] Exported list '{list.Name}'");
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+    }
+
+    public string? ExportListSettingsJson(int id)
+    {
+        var list = GetListByID(id);
+        if (list == null)
+            return null;
+
+        var copy = JsonConvert.DeserializeObject<CraftingListDefinition>(JsonConvert.SerializeObject(list))!;
+        CanonicalizeOriginalItemQualitySettings(copy);
+
+        var exported = new CraftingListSettingsExport
+        {
+            ListId = copy.ID,
+            ListName = copy.Name,
+            Recipes = copy.Recipes
+                .Select(item => new CraftingItemSettingsExport
+                {
+                    RecipeId = item.RecipeId,
+                    CraftSettings = item.CraftSettings?.Clone(),
+                    IngredientPreferences = new Dictionary<uint, int>(item.IngredientPreferences),
+                    ConsumableOverrides = item.ConsumableOverrides.Clone(),
+                })
+                .ToList(),
+            PrecraftCraftSettings = copy.PrecraftCraftSettings
+                .ToDictionary(entry => entry.Key, entry => (RecipeCraftSettings?)entry.Value.Clone()),
+        };
+
+        // Include generated precrafts even when they currently have no explicit settings,
+        // so an edited null value can intentionally clear an existing setting on import.
+        try
+        {
+            foreach (var recipeId in copy.CreatePlan().Recipes
+                         .Where(item => !item.IsOriginalRecipe)
+                         .Select(item => item.RecipeId)
+                         .Distinct())
+            {
+                exported.PrecraftCraftSettings.TryAdd(recipeId, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Debug($"[CraftingListManager] Could not enumerate generated precrafts for JSON export of '{list.Name}': {ex.Message}");
+        }
+
+        var json = JsonConvert.SerializeObject(exported, Formatting.Indented);
+        GatherBuddy.Log.Information($"[CraftingListManager] Exported settings JSON for list '{list.Name}'");
+        return json;
+    }
+
+    public (int UpdatedRecipes, int UpdatedPrecrafts, string? Error) ImportListSettingsJson(int id, string json)
+    {
+        var target = GetListByID(id);
+        if (target == null)
+            return (0, 0, "The selected list no longer exists.");
+
+        try
+        {
+            var source = JsonConvert.DeserializeObject<CraftingListSettingsExport>(json);
+            if (source == null)
+                return (0, 0, "The JSON does not contain valid crafting list settings.");
+            if (source.FormatVersion != 1)
+                return (0, 0, $"Unsupported crafting settings JSON version: {source.FormatVersion}.");
+            source.Recipes ??= new();
+            source.PrecraftCraftSettings ??= new();
+            if (source.Recipes.Count == 0 && source.PrecraftCraftSettings.Count == 0)
+                return (0, 0, "The JSON contains no recipe settings.");
+
+            var importedRecipes = source.Recipes
+                .GroupBy(item => item.RecipeId)
+                .ToDictionary(group => group.Key, group => group.Last());
+            var updatedRecipes = 0;
+            foreach (var targetItem in target.Recipes)
+            {
+                if (!importedRecipes.TryGetValue(targetItem.RecipeId, out var imported))
+                    continue;
+
+                targetItem.CraftSettings = imported.CraftSettings?.Clone();
+                targetItem.IngredientPreferences = new Dictionary<uint, int>(imported.IngredientPreferences);
+                targetItem.ConsumableOverrides = imported.ConsumableOverrides.Clone();
+                updatedRecipes++;
+            }
+
+            var updatedPrecrafts = 0;
+            foreach (var (recipeId, settings) in source.PrecraftCraftSettings)
+            {
+                if (settings == null || !settings.HasAnySettings())
+                    target.PrecraftCraftSettings.Remove(recipeId);
+                else
+                    target.PrecraftCraftSettings[recipeId] = settings.Clone();
+                updatedPrecrafts++;
+            }
+
+            if (updatedRecipes == 0 && updatedPrecrafts == 0)
+                return (0, 0, "No recipe IDs in the JSON matched this crafting list.");
+
+            CanonicalizeOriginalItemQualitySettings(target);
+            Save();
+            GatherBuddy.Log.Information($"[CraftingListManager] Imported settings JSON into list '{target.Name}': {updatedRecipes} recipe(s), {updatedPrecrafts} precraft(s)");
+            return (updatedRecipes, updatedPrecrafts, null);
+        }
+        catch (JsonException ex)
+        {
+            return (0, 0, $"Invalid crafting settings JSON: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Error($"[CraftingListManager] Failed to import settings JSON into list '{target.Name}': {ex}");
+            return (0, 0, $"Import failed: {ex.Message}");
+        }
     }
 
     public (string? Url, string? Error) ExportListToTeamCraft(int id)

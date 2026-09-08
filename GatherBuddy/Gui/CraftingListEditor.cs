@@ -85,6 +85,8 @@ public class CraftingListEditor
     
     private RecipeCraftSettingsPopup _craftSettingsPopup = new();
     private CraftingListConsumablesPopup _consumablesPopup = new();
+    private string? _listSettingsTransferMessage;
+    private bool _listSettingsTransferMessageIsError;
     
     private readonly HashSet<int> _selectedRecipeIndices = new();
     private int _lastClickedRecipeIndex = -1;
@@ -893,6 +895,54 @@ public class CraftingListEditor
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("复制基于此清单配方列表生成的 TeamCraft 导入链接");
+
+        if (ImGui.Button("导出清单 JSON##exportListSettingsJson", new Vector2(buttonWidth, 0)))
+        {
+            var exported = GatherBuddy.CraftingListManager.ExportListSettingsJson(_list.ID);
+            if (exported != null)
+            {
+                ImGui.SetClipboardText(exported);
+                _listSettingsTransferMessage = "清单制作设置 JSON 已复制到剪贴板";
+                _listSettingsTransferMessageIsError = false;
+                GatherBuddy.Log.Information($"[CraftingListEditor] Exported settings JSON for list '{_list.Name}' to clipboard");
+            }
+            else
+            {
+                _listSettingsTransferMessage = "导出失败：清单不存在";
+                _listSettingsTransferMessageIsError = true;
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("导出整张清单中所有成品和半成品的制作设置 JSON");
+
+        ImGui.SameLine();
+        if (ImGui.Button("从剪贴板导入 JSON##importListSettingsJson", new Vector2(-1, 0)))
+        {
+            var clipboardText = ImGui.GetClipboardText();
+            var (updatedRecipes, updatedPrecrafts, error) =
+                GatherBuddy.CraftingListManager.ImportListSettingsJson(_list.ID, clipboardText);
+            if (error == null)
+            {
+                _listSettingsTransferMessage = $"已更新 {updatedRecipes} 个成品、{updatedPrecrafts} 个半成品的制作设置";
+                _listSettingsTransferMessageIsError = false;
+                HandleEditorSettingsSaved();
+            }
+            else
+            {
+                _listSettingsTransferMessage = $"导入失败：{error}";
+                _listSettingsTransferMessageIsError = true;
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("从剪贴板读取清单制作设置 JSON，并按配方 ID 更新当前清单");
+
+        if (!string.IsNullOrEmpty(_listSettingsTransferMessage))
+        {
+            var messageColor = _listSettingsTransferMessageIsError
+                ? ImGuiColors.DalamudRed
+                : ImGuiColors.ParsedGreen;
+            ImGui.TextColored(messageColor, _listSettingsTransferMessage);
+        }
     }
 
     private void DrawListConsumablesSection()

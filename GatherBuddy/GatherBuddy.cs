@@ -74,6 +74,7 @@ public partial class GatherBuddy : IDalamudPlugin
     public static AutoHookIntegration.BiteTimerService BiteTimerService { get; private set; } = null!;
     public static AutoGather.Collectables.CollectableManager CollectableManager { get; private set; } = null!;
     public static Crafting.CraftingListManager CraftingListManager { get; private set; } = null!;
+    public static Crafting.CraftingListQueueManager CraftingListQueue { get; private set; } = null!;
     public static Crafting.RaphaelSolveCoordinator RaphaelSolveCoordinator { get; private set; } = null!;
     public static Crafting.RecipeBrowserSettings RecipeBrowserSettings { get; private set; } = null!;
     public static Gui.CraftingStatusWindow? CraftingStatusWindow { get; private set; }
@@ -143,6 +144,7 @@ public partial class GatherBuddy : IDalamudPlugin
             GatherWindowManager    = GatherWindowManager.Load(AlarmManager);
             AlarmManager.ForceEnable();
             CraftingListManager   = new Crafting.CraftingListManager();
+            CraftingListQueue     = new Crafting.CraftingListQueueManager();
             MarketboardService    = new MarketboardService();
             RaphaelSolveCoordinator = new Crafting.RaphaelSolveCoordinator(Config.RaphaelSolverConfig);
             RecipeBrowserSettings = new Crafting.RecipeBrowserSettings();
@@ -313,6 +315,7 @@ public partial class GatherBuddy : IDalamudPlugin
         {
             CraftingGameInterop.Update();
             CraftingGatherBridge.Update();
+            CraftingListQueueRunner.Update();
             VendorNavigator.Update();
             VendorPurchaseManager.Update();
             VendorBuyListManager.Update();

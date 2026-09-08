@@ -685,10 +685,10 @@ public class CraftingListEditor
 
         ImGui.Spacing();
 
-        if (IPCSubscriber.IsReady("Artisan"))
+        if (CraftingStartGate.GetBlock() is { } startBlock)
         {
-            ImGuiUtil.DrawDisabledButton("检测到 Artisan", VulcanUiScaling.Scaled(-1f, 22f),
-                "Artisan 插件已加载, 请卸载 Artisan 后使用 Vulcan 制作系统", true);
+            ImGuiUtil.DrawDisabledButton(startBlock.ButtonLabel, VulcanUiScaling.Scaled(-1f, 22f),
+                startBlock.Tooltip, true);
         }
         else
         {

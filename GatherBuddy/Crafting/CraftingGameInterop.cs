@@ -1412,7 +1412,7 @@ public static class CraftingGameInterop
             return CraftState.WaitFinish;
 
         var synthesisAddon = Dalamud.GameGui.GetAddonByName("Synthesis");
-        var synthVisible = synthesisAddon != null && synthesisAddon.Address != nint.Zero;
+        var synthVisible = synthesisAddon.Address != nint.Zero;
         if (!synthVisible)
         {
             GatherBuddy.Log.Debug($"[Crafting] Craft finished, closing windows");
@@ -1467,7 +1467,7 @@ public static class CraftingGameInterop
         try
         {
             var addon = Dalamud.GameGui.GetAddonByName("Synthesis");
-            if (addon == null)
+            if (addon.Address == nint.Zero)
                 return null;
 
             return null;

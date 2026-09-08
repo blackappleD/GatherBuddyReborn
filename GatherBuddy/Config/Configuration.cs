@@ -86,6 +86,7 @@ public partial class Configuration : IPluginConfiguration
     public ModifiableHotkey VulcanRecipesTabHotkey { get; set; } = new();
     public string CraftingLists { get; set; } = string.Empty;
     public List<string> CraftingFolders { get; set; } = [];
+    public List<CraftingListQueueEntry> CraftingListQueue { get; set; } = [];
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
     public Vector2 TeamCraftImportWindowSize { get; set; } = new(520, 310);
     public Vector2 VendorTeamCraftImportWindowSize { get; set; } = new(520, 310);
@@ -236,6 +237,8 @@ public partial class Configuration : IPluginConfiguration
                 config.VendorBuyLists ??= new();
                 changed |= config.CraftingFolders == null;
                 config.CraftingFolders ??= [];
+                changed |= config.CraftingListQueue == null;
+                config.CraftingListQueue ??= [];
                 if (config.EnsureVendorBuyListState())
                     changed = true;
                 if (changed)

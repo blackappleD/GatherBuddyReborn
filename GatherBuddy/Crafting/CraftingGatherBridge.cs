@@ -58,6 +58,9 @@ public static class CraftingGatherBridge
     
     public static uint RecipeToCraft => _recipeIdToCraft;
     public static bool WaitingForGatherComplete => _waitingForGatherComplete;
+
+    /// <summary>True while a crafting list run is in flight (queue mode).</summary>
+    public static bool IsQueueRunning => _isQueueMode && _queueProcessor != null;
     
     public static AutoGatherList? GetTemporaryGatherList() => _gatherList;
     public static CraftingExecutionPlan? GetActiveExecutionPlan()
@@ -712,6 +715,7 @@ public static class CraftingGatherBridge
     
     public static void StopQueue()
     {
+        CraftingListQueueRunner.OnExternalStop();
         if (_queueProcessor != null)
         {
             GatherBuddy.Log.Information("[CraftingGatherBridge] Stopping queue processor");

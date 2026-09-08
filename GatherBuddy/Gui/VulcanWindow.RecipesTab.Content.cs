@@ -841,11 +841,11 @@ public partial class VulcanWindow
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
         var topRowButtonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
-        var artisanLoaded = IPCSubscriber.IsReady("Artisan");
-        if (artisanLoaded)
+        var startBlock = CraftingStartGate.GetBlock();
+        if (startBlock is { } block)
         {
-            ImGuiUtil.DrawDisabledButton("检测到 Artisan", new Vector2(topRowButtonWidth, footerButtonHeight),
-                "Artisan 插件已加载, 请卸载 Artisan 后使用 Vulcan 制作系统", true);
+            ImGuiUtil.DrawDisabledButton(block.ButtonLabel, new Vector2(topRowButtonWidth, footerButtonHeight),
+                block.Tooltip, true);
         }
         else if (ImGui.Button("开始制作", new Vector2(topRowButtonWidth, footerButtonHeight)))
         {
@@ -857,12 +857,11 @@ public partial class VulcanWindow
             _craftSettingsPopup.Open(recipe.Recipe.RowId, recipe.Name);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
         var canQuickSynth = recipe.Recipe.CanQuickSynth;
-        var qsTooltip = artisanLoaded
-            ? "Artisan 插件已加载, 请卸载 Artisan 后使用 Vulcan 制作系统"
-            : canQuickSynth
+        var qsTooltip = startBlock?.Tooltip
+            ?? (canQuickSynth
                 ? $"简易制作 {recipe.Name} x{_browserCraftQuantity}"
-                : "此配方无法简易制作";
-        if (ImGuiUtil.DrawDisabledButton("简易制作", new Vector2(-1, footerButtonHeight), qsTooltip, !canQuickSynth || artisanLoaded))
+                : "此配方无法简易制作");
+        if (ImGuiUtil.DrawDisabledButton("简易制作", new Vector2(-1, footerButtonHeight), qsTooltip, !canQuickSynth || startBlock != null))
         {
             StartBrowserQuickSynth(recipe.Recipe, _browserCraftQuantity);
             MinimizeWindow();

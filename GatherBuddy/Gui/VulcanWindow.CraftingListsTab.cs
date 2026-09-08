@@ -26,7 +26,7 @@ public partial class VulcanWindow
 
         if (GatherBuddy.ControllerSupport != null && !_craftingListsRequestFocus)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("制作清单##craftingListsTab", 0, 9);
+            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("制作清单##craftingListsTab", 0, 11);
             tabItem = handle;
             tabOpen = handle;
         }
@@ -290,14 +290,14 @@ public partial class VulcanWindow
         if (ImGui.Selectable("编辑"))
             OpenCraftingList(list);
 
-        var artisanLoaded = IPCSubscriber.IsReady("Artisan");
-        using (ImRaii.Disabled(artisanLoaded))
+        var contextStartBlock = CraftingStartGate.GetBlock();
+        using (ImRaii.Disabled(contextStartBlock != null))
         {
             if (ImGui.Selectable("开始制作"))
                 StartCraftingList(list);
         }
-        if (artisanLoaded && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip("Artisan 插件已加载, 请卸载 Artisan 后使用 Vulcan 制作系统");
+        if (contextStartBlock is { } contextBlock && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(contextBlock.Tooltip);
 
         if (ImGui.BeginMenu("移动到文件夹"))
         {
@@ -457,10 +457,10 @@ public partial class VulcanWindow
         if (ImGui.Button("编辑清单##previewEdit", new Vector2(halfW, VulcanUiScaling.Scaled(22f))))
             OpenCraftingList(list);
         ImGui.SameLine();
-        if (IPCSubscriber.IsReady("Artisan"))
+        if (CraftingStartGate.GetBlock() is { } previewBlock)
         {
-            ImGuiUtil.DrawDisabledButton("检测到 Artisan##previewStart", VulcanUiScaling.Scaled(-1f, 22f),
-                "Artisan 插件已加载, 请卸载 Artisan 后使用 Vulcan 制作系统", true);
+            ImGuiUtil.DrawDisabledButton($"{previewBlock.ButtonLabel}##previewStart", VulcanUiScaling.Scaled(-1f, 22f),
+                previewBlock.Tooltip, true);
         }
         else if (ImGui.Button("开始制作##previewStart", VulcanUiScaling.Scaled(-1f, 22f)))
         {

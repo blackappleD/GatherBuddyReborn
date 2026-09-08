@@ -11,21 +11,7 @@ namespace GatherBuddy.Gui;
 public partial class VulcanWindow
 {
     public void StartCraftingList(CraftingListDefinition list)
-    {
-        if (list.Recipes.Count == 0)
-        {
-            GatherBuddy.Log.Warning("[VulcanWindow] Cannot start empty list");
-            return;
-        }
-
-        if (list.QuickSynthAll)
-            GatherBuddy.Log.Debug($"[VulcanWindow] Quick Synth All active (PreferNQ={list.QuickSynthAllPreferNQ}, PrecraftsOnly={list.QuickSynthAllPrecraftsOnly})");
-        var executionPlan = CraftingExecutionPlan.Create(list);
-
-        GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {executionPlan.QueueView.Count} crafts from {executionPlan.ResolvedPlan.Recipes.Count} planned recipes");
-        CraftingGatherBridge.StartQueueCraftAndGather(
-            executionPlan, list.Consumables, list.Ephemeral ? (int?)list.ID : null);
-    }
+        => CraftingListLauncher.TryStart(list);
 
     private static RecipeCraftSettings? BuildEffectiveQueueCraftSettings(
         RecipeCraftSettings? sourceSettings,

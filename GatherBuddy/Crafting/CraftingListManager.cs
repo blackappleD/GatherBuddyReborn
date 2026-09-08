@@ -3,12 +3,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace GatherBuddy.Crafting;
 
 public class CraftingListManager
 {
     private sealed class CraftingListSettingsExport
+    {
+        public int FormatVersion { get; set; } = 2;
+        public int ListId { get; set; }
+        public string ListName { get; set; } = string.Empty;
+        public List<CraftingItemSettingsExport> Recipes { get; set; } = new();
+        public List<CraftingItemSettingsExport> Precrafts { get; set; } = new();
+    }
+
+    private sealed class LegacyCraftingListSettingsExport
     {
         public int FormatVersion { get; set; } = 1;
         public int ListId { get; set; }
@@ -20,6 +30,7 @@ public class CraftingListManager
     private sealed class CraftingItemSettingsExport
     {
         public uint RecipeId { get; set; }
+        public string ItemName { get; set; } = string.Empty;
         public RecipeCraftSettings? CraftSettings { get; set; }
         public Dictionary<uint, int> IngredientPreferences { get; set; } = new();
         public CraftingListConsumableOverrides ConsumableOverrides { get; set; } = new();
@@ -548,31 +559,37 @@ public class CraftingListManager
                 .Select(item => new CraftingItemSettingsExport
                 {
                     RecipeId = item.RecipeId,
+                    ItemName = GetRecipeResultName(item.RecipeId),
                     CraftSettings = item.CraftSettings?.Clone(),
                     IngredientPreferences = new Dictionary<uint, int>(item.IngredientPreferences),
                     ConsumableOverrides = item.ConsumableOverrides.Clone(),
                 })
                 .ToList(),
-            PrecraftCraftSettings = copy.PrecraftCraftSettings
-                .ToDictionary(entry => entry.Key, entry => (RecipeCraftSettings?)entry.Value.Clone()),
         };
 
-        // Include generated precrafts even when they currently have no explicit settings,
-        // so an edited null value can intentionally clear an existing setting on import.
+        var precraftIds = new HashSet<uint>(copy.PrecraftCraftSettings.Keys);
         try
         {
             foreach (var recipeId in copy.CreatePlan().Recipes
                          .Where(item => !item.IsOriginalRecipe)
                          .Select(item => item.RecipeId)
                          .Distinct())
-            {
-                exported.PrecraftCraftSettings.TryAdd(recipeId, null);
-            }
+                precraftIds.Add(recipeId);
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Debug($"[CraftingListManager] Could not enumerate generated precrafts for JSON export of '{list.Name}': {ex.Message}");
         }
+
+        exported.Precrafts = precraftIds
+            .OrderBy(recipeId => recipeId)
+            .Select(recipeId => new CraftingItemSettingsExport
+            {
+                RecipeId = recipeId,
+                ItemName = GetRecipeResultName(recipeId),
+                CraftSettings = copy.PrecraftCraftSettings.GetValueOrDefault(recipeId)?.Clone(),
+            })
+            .ToList();
 
         var json = JsonConvert.SerializeObject(exported, Formatting.Indented);
         GatherBuddy.Log.Information($"[CraftingListManager] Exported settings JSON for list '{list.Name}'");
@@ -587,23 +604,49 @@ public class CraftingListManager
 
         try
         {
-            var source = JsonConvert.DeserializeObject<CraftingListSettingsExport>(json);
-            if (source == null)
-                return (0, 0, "The JSON does not contain valid crafting list settings.");
-            if (source.FormatVersion != 1)
-                return (0, 0, $"Unsupported crafting settings JSON version: {source.FormatVersion}.");
-            source.Recipes ??= new();
-            source.PrecraftCraftSettings ??= new();
-            if (source.Recipes.Count == 0 && source.PrecraftCraftSettings.Count == 0)
+            var root = JObject.Parse(json);
+            var formatVersion = root["FormatVersion"]?.Value<int>() ?? 1;
+            List<CraftingItemSettingsExport> importedRecipes;
+            List<CraftingItemSettingsExport> importedPrecrafts;
+            if (formatVersion == 1)
+            {
+                var legacy = root.ToObject<LegacyCraftingListSettingsExport>();
+                if (legacy == null)
+                    return (0, 0, "The JSON does not contain valid crafting list settings.");
+
+                importedRecipes = legacy.Recipes ?? new();
+                importedPrecrafts = legacy.PrecraftCraftSettings
+                    .Select(entry => new CraftingItemSettingsExport
+                    {
+                        RecipeId = entry.Key,
+                        CraftSettings = entry.Value?.Clone(),
+                    })
+                    .ToList();
+            }
+            else if (formatVersion == 2)
+            {
+                var source = root.ToObject<CraftingListSettingsExport>();
+                if (source == null)
+                    return (0, 0, "The JSON does not contain valid crafting list settings.");
+
+                importedRecipes = source.Recipes ?? new();
+                importedPrecrafts = source.Precrafts ?? new();
+            }
+            else
+            {
+                return (0, 0, $"Unsupported crafting settings JSON version: {formatVersion}.");
+            }
+
+            if (importedRecipes.Count == 0 && importedPrecrafts.Count == 0)
                 return (0, 0, "The JSON contains no recipe settings.");
 
-            var importedRecipes = source.Recipes
+            var importedRecipeMap = importedRecipes
                 .GroupBy(item => item.RecipeId)
                 .ToDictionary(group => group.Key, group => group.Last());
             var updatedRecipes = 0;
             foreach (var targetItem in target.Recipes)
             {
-                if (!importedRecipes.TryGetValue(targetItem.RecipeId, out var imported))
+                if (!importedRecipeMap.TryGetValue(targetItem.RecipeId, out var imported))
                     continue;
 
                 targetItem.CraftSettings = imported.CraftSettings?.Clone();
@@ -613,8 +656,10 @@ public class CraftingListManager
             }
 
             var updatedPrecrafts = 0;
-            foreach (var (recipeId, settings) in source.PrecraftCraftSettings)
+            foreach (var imported in importedPrecrafts)
             {
+                var recipeId = imported.RecipeId;
+                var settings = imported.CraftSettings;
                 if (settings == null || !settings.HasAnySettings())
                     target.PrecraftCraftSettings.Remove(recipeId);
                 else
@@ -638,6 +683,21 @@ public class CraftingListManager
         {
             GatherBuddy.Log.Error($"[CraftingListManager] Failed to import settings JSON into list '{target.Name}': {ex}");
             return (0, 0, $"Import failed: {ex.Message}");
+        }
+    }
+
+    private static string GetRecipeResultName(uint recipeId)
+    {
+        try
+        {
+            var recipe = RecipeManager.GetRecipe(recipeId);
+            return recipe.HasValue
+                ? recipe.Value.ItemResult.Value.Name.ExtractText()
+                : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 

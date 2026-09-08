@@ -20,7 +20,7 @@ public readonly struct MultiString(string en, string de, string fr, string jp, s
         => Name(lang);
 
     public override string ToString()
-        => Name(ClientLanguage.ChineseSimplified);
+        => Name((ClientLanguage)4);
 
     public string ToWholeString()
         => $"{English}|{German}|{French}|{Japanese}|{ChineseSimplified}";
@@ -32,7 +32,7 @@ public readonly struct MultiString(string en, string de, string fr, string jp, s
         var de = ParseSeStringLumina(gameData.GetExcelSheet<PlaceName>(ClientLanguage.German).GetRowOrDefault(id)?.Name);
         var fr = ParseSeStringLumina(gameData.GetExcelSheet<PlaceName>(ClientLanguage.French).GetRowOrDefault(id)?.Name);
         var jp = ParseSeStringLumina(gameData.GetExcelSheet<PlaceName>(ClientLanguage.Japanese).GetRowOrDefault(id)?.Name);
-        var chs = ParseSeStringLumina(gameData.GetExcelSheet<PlaceName>(ClientLanguage.ChineseSimplified).GetRowOrDefault(id)?.Name);
+        var chs = ParseSeStringLumina(gameData.GetExcelSheet<PlaceName>((ClientLanguage)4).GetRowOrDefault(id)?.Name);
         return new MultiString(en, de, fr, jp, chs);
     }
 
@@ -42,7 +42,7 @@ public readonly struct MultiString(string en, string de, string fr, string jp, s
         var de = ParseSeStringLumina(gameData.GetExcelSheet<Item>(ClientLanguage.German).GetRowOrDefault(id)?.Name);
         var fr = ParseSeStringLumina(gameData.GetExcelSheet<Item>(ClientLanguage.French).GetRowOrDefault(id)?.Name);
         var jp = ParseSeStringLumina(gameData.GetExcelSheet<Item>(ClientLanguage.Japanese).GetRowOrDefault(id)?.Name);
-        var chs = ParseSeStringLumina(gameData.GetExcelSheet<Item>(ClientLanguage.ChineseSimplified).GetRowOrDefault(id)?.Name);
+        var chs = ParseSeStringLumina(gameData.GetExcelSheet<Item>((ClientLanguage)4).GetRowOrDefault(id)?.Name);
         return new MultiString(en, de, fr, jp, chs);
     }
 
@@ -53,7 +53,7 @@ public readonly struct MultiString(string en, string de, string fr, string jp, s
             ClientLanguage.German   => German,
             ClientLanguage.Japanese => Japanese,
             ClientLanguage.French   => French,
-            ClientLanguage.ChineseSimplified => ChineseSimplified,
+            (ClientLanguage)4 => ChineseSimplified,
             _                       => throw new ArgumentException(),
         };
 

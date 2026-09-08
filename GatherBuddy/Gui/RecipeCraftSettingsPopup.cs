@@ -29,6 +29,8 @@ public class RecipeCraftSettingsPopup
     private CraftingListItem? _editingListItem;
     private CraftingListDefinition? _editingList;
     private bool _isPrecraftMode;
+    private PlannedOutputQuality _queueOutputQuality = PlannedOutputQuality.Unknown;
+    private bool _forceProgressOnlyForQueue;
     
     private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = new();
     private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = new();
@@ -87,6 +89,8 @@ public class RecipeCraftSettingsPopup
         _editingListItem = null;
         _editingList = null;
         _isPrecraftMode = false;
+        _queueOutputQuality = PlannedOutputQuality.Unknown;
+        _forceProgressOnlyForQueue = false;
         
         var existing = GatherBuddy.RecipeBrowserSettings.Get(recipeId);
         if (existing != null)
@@ -129,6 +133,8 @@ public class RecipeCraftSettingsPopup
         _editingListItem = item;
         _editingList = list;
         _isPrecraftMode = false;
+        _queueOutputQuality = PlannedOutputQuality.Unknown;
+        _forceProgressOnlyForQueue = false;
         
         var cs = item.CraftSettings;
         _editingSettings = new RecipeCraftSettings
@@ -159,7 +165,11 @@ public class RecipeCraftSettingsPopup
         GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Setting shouldOpen flag for list item");
     }
 
-    public void OpenForPrecraft(uint recipeId, string recipeName, CraftingListDefinition list)
+    public void OpenForPrecraft(
+        uint recipeId,
+        string recipeName,
+        CraftingListDefinition list,
+        PlannedOutputQuality outputQuality = PlannedOutputQuality.Unknown)
     {
         GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Opening popup for precraft {recipeId}: {recipeName}");
         _recipeId = recipeId;
@@ -167,6 +177,7 @@ public class RecipeCraftSettingsPopup
         _editingListItem = null;
         _editingList = list;
         _isPrecraftMode = true;
+        _queueOutputQuality = outputQuality;
 
         var cs = list.PrecraftCraftSettings.GetValueOrDefault(recipeId);
         _editingSettings = new RecipeCraftSettings
@@ -189,6 +200,8 @@ public class RecipeCraftSettingsPopup
             SelectedMacroId = cs?.SelectedMacroId,
             SolverOverride = cs?.SolverOverride ?? SolverOverrideMode.Default,
         };
+
+        _forceProgressOnlyForQueue = IsForcedProgressOnlyQueueItem();
 
         LoadConsumables();
         LoadIngredients();
@@ -388,6 +401,9 @@ public class RecipeCraftSettingsPopup
 
     private bool UsesRaphaelSolverForEdit()
     {
+        if (_forceProgressOnlyForQueue)
+            return false;
+
         if (_editingList == null)
         {
             var recipe = RecipeManager.GetRecipe(_recipeId);
@@ -416,6 +432,15 @@ public class RecipeCraftSettingsPopup
     private void DrawRaphaelValidationStatus()
     {
         SaveIngredientPreferences();
+        if (_forceProgressOnlyForQueue)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(ImGuiColors.DalamudGrey, "Raphael: 当前 NQ 队列覆盖为仅推进度");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("该半成品本次按 NQ 产物规划，实际制作会使用仅推进度，不会调用 Raphael。\n此覆盖只对当前清单队列生效，不会改变已保存的制作设置。");
+            return;
+        }
+
         if (!UsesRaphaelSolverForEdit())
         {
             ImGui.Spacing();
@@ -445,6 +470,9 @@ public class RecipeCraftSettingsPopup
 
     private void QueueCurrentRaphaelWarmup()
     {
+        if (_forceProgressOnlyForQueue)
+            return;
+
         var persistedSettings = BuildPersistedSettings();
         if (_isPrecraftMode && _editingList != null)
         {
@@ -463,6 +491,9 @@ public class RecipeCraftSettingsPopup
 
     private string? ResolveEffectiveMacroIdForEdit()
     {
+        if (_forceProgressOnlyForQueue)
+            return null;
+
         if (_editingListItem == null && !_isPrecraftMode)
             return _editingSettings.SolverOverride == SolverOverrideMode.Default
                 ? _editingSettings.SelectedMacroId
@@ -611,8 +642,11 @@ public class RecipeCraftSettingsPopup
                 var inheritedSolverOverride = _isPrecraftMode
                     ? _editingList?.DefaultPrecraftSolverOverride ?? SolverOverrideMode.Default
                     : _editingList?.DefaultFinalSolverOverride ?? SolverOverrideMode.Default;
+                if (_forceProgressOnlyForQueue)
+                    inheritedSolverOverride = SolverOverrideMode.ProgressOnlySolver;
                 var inheritedName = GetMacroSelectionName(inheritedId, inheritedSolverOverride, allMacros);
-                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"清单: {inheritedName}");
+                var suffix = _forceProgressOnlyForQueue ? "（本次 NQ 队列覆盖）" : string.Empty;
+                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"清单: {inheritedName}{suffix}");
                 return;
             }
 
@@ -624,7 +658,9 @@ public class RecipeCraftSettingsPopup
 
     private void DrawMacroCombo(System.Collections.Generic.List<UserMacro> allMacros)
     {
-        var currentMacroName = GetMacroSelectionName(_editingSettings.SelectedMacroId, _editingSettings.SolverOverride, allMacros);
+        var currentMacroName = _forceProgressOnlyForQueue
+            ? "仅推进度（本次 NQ 队列覆盖）"
+            : GetMacroSelectionName(_editingSettings.SelectedMacroId, _editingSettings.SolverOverride, allMacros);
 
         ImGui.SetNextItemWidth(-1);
         if (ImGui.BeginCombo("##MacroSelector", currentMacroName))
@@ -1066,6 +1102,26 @@ public class RecipeCraftSettingsPopup
                 CanBeHQ = canBeHQ
             });
         }
+    }
+
+    private bool IsForcedProgressOnlyQueueItem()
+    {
+        if (!_isPrecraftMode
+            || _editingList == null
+            || _queueOutputQuality != PlannedOutputQuality.NQ)
+            return false;
+
+        var sourceItem = new CraftingListItem(_recipeId, 1)
+        {
+            IsOriginalRecipe = false,
+            OutputQuality = _queueOutputQuality,
+        };
+        return CraftingContextResolver.TryResolveListExecutionContext(
+                   _editingList,
+                   sourceItem,
+                   _editingSettings,
+                   out var executionContext)
+            && executionContext.ForceProgressOnlyUnlockCraft;
     }
     
     private void SaveIngredientPreferences()

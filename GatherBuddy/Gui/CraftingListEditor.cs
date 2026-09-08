@@ -98,6 +98,7 @@ public class CraftingListEditor
         public int QueueIndex { get; init; }
         public int Quantity { get; init; }
         public bool IsOriginalRecipe { get; init; }
+        public PlannedOutputQuality OutputQuality { get; init; }
         public Recipe Recipe { get; init; }
         public string ItemName { get; init; } = string.Empty;
         public string Label { get; init; } = string.Empty;
@@ -1264,6 +1265,7 @@ public class CraftingListEditor
                 QueueIndex = i,
                 Quantity = queueItem.Quantity,
                 IsOriginalRecipe = queueItem.IsOriginalRecipe,
+                OutputQuality = queueItem.OutputQuality,
                 Recipe = recipeData.Value,
                 ItemName = itemName,
                 Label = $"{qualityLabel}{i + 1}. {itemName} x{queueItem.Quantity} ({jobName})",
@@ -1336,7 +1338,11 @@ public class CraftingListEditor
             }
             else
             {
-                _craftSettingsPopup.OpenForPrecraft(row.Recipe.RowId, row.ItemName, _list);
+                _craftSettingsPopup.OpenForPrecraft(
+                    row.Recipe.RowId,
+                    row.ItemName,
+                    _list,
+                    row.OutputQuality);
             }
         }
 

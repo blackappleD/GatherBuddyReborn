@@ -87,6 +87,8 @@ public class CraftingListEditor
     private CraftingListConsumablesPopup _consumablesPopup = new();
     private string? _listSettingsTransferMessage;
     private bool _listSettingsTransferMessageIsError;
+    private string? _textImportMessage;
+    private Vector4 _textImportMessageColor;
     
     private readonly HashSet<int> _selectedRecipeIndices = new();
     private int _lastClickedRecipeIndex = -1;
@@ -1029,6 +1031,56 @@ public class CraftingListEditor
 
         if (ImGui.IsItemHovered() && _selectedRecipe != null)
             ImGui.SetTooltip($"Add {_recipeLabels[_selectedRecipe.Value.RowId]} x{_searchQuantity} to list");
+
+        ImGui.Spacing();
+        if (ImGui.Button("从剪贴板导入物品##importItemsFromText", new Vector2(-1, 0)))
+            ImportItemsFromClipboardText();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("从剪贴板按行批量导入物品, 每行一个物品, 支持格式:\n"
+                + "[HQ]破布木木材 x 10\n"
+                + "八面体陨铁块 x6 / 6x 八面体陨铁块 / 玫瑰红纹石 7\n"
+                + "未写数量默认为 1\n"
+                + "[HQ] 标记的物品按正常制作 (默认即以 HQ 为目标)\n"
+                + "[NQ] 标记的物品将设置为快速制作 (仅 NQ)");
+
+        if (!string.IsNullOrEmpty(_textImportMessage))
+        {
+            using (ImRaii.PushColor(ImGuiCol.Text, _textImportMessageColor))
+                ImGui.TextWrapped(_textImportMessage);
+        }
+    }
+
+    private void ImportItemsFromClipboardText()
+    {
+        var clipboardText = ImGui.GetClipboardText();
+        var result = GatherBuddy.CraftingListManager.ImportListItemsFromText(_list.ID, clipboardText);
+        if (result.Error != null)
+        {
+            _textImportMessage = $"导入失败：{result.Error}";
+            _textImportMessageColor = ImGuiColors.DalamudRed;
+            return;
+        }
+
+        foreach (var recipeId in result.AddedRecipeIds.Distinct())
+            RaphaelAssessmentService.QueueWarmupForAddedListRecipe(recipeId, _list);
+        InvalidateQueueCache();
+        InvalidateMaterialCaches();
+        InvalidatePresentationCaches();
+        TriggerQueueRegeneration();
+        TriggerMaterialsRegeneration();
+
+        if (result.FailedLines.Count == 0)
+        {
+            _textImportMessage = $"已导入 {result.AddedLines} 行，共 {result.TotalQuantity} 件";
+            _textImportMessageColor = ImGuiColors.ParsedGreen;
+        }
+        else
+        {
+            var shownFailures = string.Join("、", result.FailedLines.Take(3));
+            var suffix = result.FailedLines.Count > 3 ? $" 等 {result.FailedLines.Count} 行" : string.Empty;
+            _textImportMessage = $"已导入 {result.AddedLines} 行，{result.FailedLines.Count} 行未识别：{shownFailures}{suffix}";
+            _textImportMessageColor = ImGuiColors.DalamudYellow;
+        }
     }
 
     private void DrawRecipeComboWithKeywordFilter()

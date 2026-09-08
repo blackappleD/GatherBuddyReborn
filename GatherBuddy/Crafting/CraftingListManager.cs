@@ -751,6 +751,65 @@ public class CraftingListManager
         return ($"{baseUrl}{base64}", null);
     }
 
+    public sealed class TextImportResult
+    {
+        public int AddedLines { get; init; }
+        public int TotalQuantity { get; init; }
+        public List<uint> AddedRecipeIds { get; init; } = new();
+        public List<string> FailedLines { get; init; } = new();
+        public string? Error { get; init; }
+    }
+
+    public TextImportResult ImportListItemsFromText(int id, string? text)
+    {
+        var target = GetListByID(id);
+        if (target == null)
+            return new TextImportResult { Error = "清单不存在" };
+
+        var lines = CraftingListTextImporter.ParseLines(text);
+        if (lines.Count == 0)
+            return new TextImportResult { Error = "剪贴板中没有可识别的物品行" };
+
+        var addedRecipeIds = new List<uint>();
+        var failedLines = new List<string>();
+        var addedLines = 0;
+        var totalQuantity = 0;
+        foreach (var line in lines)
+        {
+            if (!CraftingListTextImporter.TryResolveRecipeId(line.ItemName, out var recipeId))
+            {
+                failedLines.Add(line.RawLine);
+                continue;
+            }
+
+            target.AddRecipe(recipeId, line.Quantity);
+            if (line.Quality == ImportedItemQuality.NQ)
+                target.SetRecipeQuickSynth(recipeId, true, true);
+
+            addedRecipeIds.Add(recipeId);
+            addedLines++;
+            totalQuantity += line.Quantity;
+        }
+
+        if (addedLines == 0)
+            return new TextImportResult
+            {
+                FailedLines = failedLines,
+                Error = "没有匹配到任何可制作物品，请确认物品名称与游戏内一致",
+            };
+
+        Save();
+        GatherBuddy.Log.Information(
+            $"[CraftingListManager] Imported {addedLines} item line(s) ({totalQuantity} total) into list '{target.Name}' from text, {failedLines.Count} line(s) unresolved");
+        return new TextImportResult
+        {
+            AddedLines = addedLines,
+            TotalQuantity = totalQuantity,
+            AddedRecipeIds = addedRecipeIds,
+            FailedLines = failedLines,
+        };
+    }
+
     public (CraftingListDefinition? List, string? Error) ImportList(string base64)
     {
         try

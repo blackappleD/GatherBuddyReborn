@@ -14,6 +14,7 @@ public sealed class CraftingExecutionPlan
     public int Version { get; private set; }
     public bool SkipIfEnough { get; }
     public bool SkipFinalIfEnough { get; }
+    public bool SkipGathering { get; }
     public bool RetainerRestock { get; }
     public CraftingListPlan ResolvedPlan { get; private set; }
 
@@ -43,6 +44,7 @@ public sealed class CraftingExecutionPlan
         ListName = planningSnapshot.Name;
         SkipIfEnough = planningSnapshot.SkipIfEnough;
         SkipFinalIfEnough = planningSnapshot.SkipFinalIfEnough;
+        SkipGathering = planningSnapshot.SkipGathering;
         RetainerRestock = planningSnapshot.RetainerRestock;
         ApplyResolvedPlan(resolvedPlan);
     }

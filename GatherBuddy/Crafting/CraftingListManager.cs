@@ -94,6 +94,7 @@ public class CraftingListManager
             existing.Order = list.Order;
             existing.Recipes     = list.Recipes;
             existing.SkipIfEnough = list.SkipIfEnough;
+            existing.SkipGathering = list.SkipGathering;
             existing.Materia = list.Materia;
             existing.Repair = list.Repair;
             existing.RepairPercent = list.RepairPercent;
@@ -584,6 +585,7 @@ public class CraftingListManager
             newList.DefaultPrecraftSolverOverride = source.DefaultPrecraftSolverOverride;
             newList.DefaultFinalSolverOverride = source.DefaultFinalSolverOverride;
             newList.SkipIfEnough          = source.SkipIfEnough;
+            newList.SkipGathering         = source.SkipGathering;
             newList.QuickSynthAll         = source.QuickSynthAll;
             newList.QuickSynthAllPreferNQ = source.QuickSynthAllPreferNQ;
             newList.QuickSynthAllPrecraftsOnly = source.QuickSynthAllPrecraftsOnly;

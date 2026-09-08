@@ -220,7 +220,7 @@ public static class CraftingGatherBridge
         _queueProcessor = new CraftingQueueProcessor();
         _queueProcessor.QueueCompleted += OnQueueCompleted;
         _waitingForGatherComplete = true;
-        GatherBuddy.Log.Information($"[CraftingGatherBridge] Starting queue automation with {executionPlan.QueueView.Count} recipes, retainerRestock={executionPlan.RetainerRestock}");
+        GatherBuddy.Log.Information($"[CraftingGatherBridge] Starting queue automation with {executionPlan.QueueView.Count} recipes, retainerRestock={executionPlan.RetainerRestock}, skipGathering={executionPlan.SkipGathering}");
         _queueProcessor.StartQueue(executionPlan, listConsumables, GatherBuddy.RaphaelSolveCoordinator);
         var hasRetainerWork = executionPlan.RetainerRestock && AllaganTools.Enabled
             && (executionPlan.Materials.Count > 0 || executionPlan.RetainerConsumedCraftables.Count > 0);
@@ -234,6 +234,13 @@ public static class CraftingGatherBridge
     {
         try
         {
+            if (_isQueueMode && _activeExecutionPlan?.SkipGathering == true)
+            {
+                GatherBuddy.Log.Information("[CraftingGatherBridge] Gathering is disabled for the active crafting list; proceeding directly to crafting");
+                OnGatherComplete();
+                return;
+            }
+
             if (_plugin != null)
             {
                 var enabledLists = _plugin.AutoGatherListsManager.Lists.Where(l => l.Enabled && !l.Fallback).ToList();

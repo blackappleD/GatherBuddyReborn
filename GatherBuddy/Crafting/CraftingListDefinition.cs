@@ -26,6 +26,7 @@ public class CraftingListDefinition
     public Dictionary<uint, uint> PrecraftRecipeOverrides { get; set; } = new();
     public bool SkipIfEnough { get; set; } = false;
     public bool SkipFinalIfEnough { get; set; } = false;
+    public bool SkipGathering { get; set; } = false;
     public bool QuickSynthAll { get; set; } = false;
     public bool QuickSynthAllPreferNQ { get; set; } = false;
     public bool QuickSynthAllPrecraftsOnly { get; set; } = false;
@@ -90,6 +91,7 @@ public class CraftingListDefinition
             DefaultFinalSolverOverride = DefaultFinalSolverOverride,
             SkipIfEnough = SkipIfEnough,
             SkipFinalIfEnough = SkipFinalIfEnough,
+            SkipGathering = SkipGathering,
             QuickSynthAll = QuickSynthAll,
             QuickSynthAllPreferNQ = QuickSynthAllPreferNQ,
             QuickSynthAllPrecraftsOnly = QuickSynthAllPrecraftsOnly,

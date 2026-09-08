@@ -543,7 +543,7 @@ public class CraftingListEditor
         var lineH   = ImGui.GetTextLineHeightWithSpacing();
         var spacing = ImGui.GetStyle().ItemSpacing.Y;
         var frameH  = ImGui.GetFrameHeightWithSpacing();
-        var footerRows = 7 + (_list.QuickSynthAll ? 2 : 0) + (_list.SkipIfEnough ? 1 : 0);
+        var footerRows = 8 + (_list.QuickSynthAll ? 2 : 0) + (_list.SkipIfEnough ? 1 : 0);
         var bottomH = frameH * footerRows + spacing * 2;
         var queueH  = Math.Max(ImGui.GetContentRegionAvail().Y - bottomH, lineH * 3);
 
@@ -612,6 +612,15 @@ public class CraftingListEditor
                 ImGui.SetTooltip("同时根据已有数量减少成品制作。适用于恢复中断的清单");
             ImGui.Unindent();
         }
+
+        var skipGathering = _list.SkipGathering;
+        if (ImGui.Checkbox("跳过采集##sg", ref skipGathering))
+        {
+            _list.SkipGathering = skipGathering;
+            GatherBuddy.CraftingListManager.SaveList(_list);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("开始制作清单时不自动采集缺少的材料, 直接进入制作流程");
 
         var quickSynthAll = _list.QuickSynthAll;
         if (ImGui.Checkbox("全部快速制作##qsa", ref quickSynthAll))
@@ -1642,6 +1651,7 @@ public class CraftingListEditor
         var hashParts = new List<string>();
         hashParts.Add($"SkipIfEnough:{planningList.SkipIfEnough}");
         hashParts.Add($"SkipFinalIfEnough:{planningList.SkipFinalIfEnough}");
+        hashParts.Add($"SkipGathering:{planningList.SkipGathering}");
         hashParts.Add($"RetainerRestock:{planningList.RetainerRestock}");
         foreach (var item in planningList.Recipes)
         {

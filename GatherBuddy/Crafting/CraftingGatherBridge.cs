@@ -7,6 +7,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.AutoGather.Collectables;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Helpers;
 using Lumina.Excel.Sheets;
 using GatherBuddy.Plugin;
@@ -440,6 +441,8 @@ public static class CraftingGatherBridge
     private static void OnQueueCompleted()
     {
         GatherBuddy.Log.Information("[CraftingGatherBridge] Queue completed, will clean up after tasks finish");
+        if (_activeExecutionPlan != null && GatherBuddy.Config.CraftingCompletionSound)
+            SoundHelper.StartCompletionSoundTask(3, GatherBuddy.Config.CraftingSoundPlaybackVolume);
     }
 
     private static void TryStartCollectablesInterruption()

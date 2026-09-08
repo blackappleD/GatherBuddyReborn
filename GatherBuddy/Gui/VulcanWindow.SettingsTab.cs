@@ -101,6 +101,28 @@ public partial class VulcanWindow
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("每个制作操作之间的延迟毫秒数 (0 = 立即, 最大 1000 ms)");
 
+            var completionSound = GatherBuddy.Config.CraftingCompletionSound;
+            if (ImGui.Checkbox("制作完成后播放声音", ref completionSound))
+            {
+                GatherBuddy.Config.CraftingCompletionSound = completionSound;
+                GatherBuddy.Config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("制作清单或整个清单队列完成后播放提示音");
+
+            if (GatherBuddy.Config.CraftingCompletionSound)
+            {
+                var soundVolume = GatherBuddy.Config.CraftingSoundPlaybackVolume;
+                ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(150f));
+                if (ImGui.SliderInt("制作完成提示音量", ref soundVolume, 0, 100))
+                {
+                    GatherBuddy.Config.CraftingSoundPlaybackVolume = Math.Clamp(soundVolume, 0, 100);
+                    GatherBuddy.Config.Save();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("清单或队列完成提示音的播放音量");
+            }
+
             var ctxMenuEntries = GatherBuddy.Config.VulcanContextMenuEntries;
             if (ImGui.Checkbox("启用右键菜单入口", ref ctxMenuEntries))
             {

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Plugin;
 
 namespace GatherBuddy.Crafting;
@@ -118,6 +119,8 @@ public static class CraftingListQueueRunner
             {
                 GatherBuddy.Log.Information("[CraftingListQueueRunner] Crafting list queue finished");
                 Communicator.Print("清单队列已全部完成。");
+                if (GatherBuddy.Config.CraftingCompletionSound)
+                    SoundHelper.StartCompletionSoundTask(3, GatherBuddy.Config.CraftingSoundPlaybackVolume);
                 Stop();
                 return false;
             }

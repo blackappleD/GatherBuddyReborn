@@ -871,6 +871,9 @@ public class CraftingQueueProcessor
 
     private void CompleteQueue()
     {
+        if (_currentState == QueueState.Complete)
+            return;
+
         GatherBuddy.Log.Information($"[CraftingQueueProcessor] Queue complete!");
         YesAlready.Unlock();
         GatherBuddy.AutoGather.Enabled = false;

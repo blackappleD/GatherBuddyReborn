@@ -88,6 +88,8 @@ public partial class Configuration : IPluginConfiguration
     public List<string> CraftingFolders { get; set; } = [];
     public List<CraftingListQueueEntry> CraftingListQueue { get; set; } = [];
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
+    public bool CraftingCompletionSound { get; set; } = true;
+    public int CraftingSoundPlaybackVolume { get; set; } = 100;
     public Vector2 TeamCraftImportWindowSize { get; set; } = new(520, 310);
     public Vector2 VendorTeamCraftImportWindowSize { get; set; } = new(520, 310);
     public string RecipeBrowserSettings { get; set; } = string.Empty;

@@ -14,9 +14,21 @@ public class SoundHelper
     private const string SoundResource = "GatherBuddy.CustomInfo.honk-sound.wav";
 
     public void StartHonkSoundTask(int repeatCount)
-        => Task.Run(() => PlayHonkSound(repeatCount));
+        => StartCompletionSoundTask(repeatCount, GatherBuddy.Config.AutoGatherConfig.SoundPlaybackVolume);
 
-    private void PlayHonkSound(int repeatCount)
+    /// <summary>
+    /// Plays the embedded completion sound without requiring an AutoGather instance.
+    /// This is also used by the crafting list and crafting list queue completion paths.
+    /// </summary>
+    public static void StartCompletionSoundTask(int repeatCount, int volumePercent)
+    {
+        if (repeatCount <= 0 || volumePercent <= 0)
+            return;
+
+        Task.Run(() => PlayHonkSound(repeatCount, volumePercent));
+    }
+
+    private static void PlayHonkSound(int repeatCount, int volumePercent)
     {
         try
         {
@@ -35,7 +47,7 @@ public class SoundHelper
                 using var soundSource = new WaveFileReader(audioStream).ToSampleSource().ToMono();
                 using var soundOut    = new WasapiOut();
                 soundOut.Initialize(soundSource.ToWaveSource());
-                soundOut.Volume = GatherBuddy.Config.AutoGatherConfig.SoundPlaybackVolume / 100f;
+                soundOut.Volume = Math.Clamp(volumePercent, 0, 100) / 100f;
 
                 soundOut.Play();
                 while (soundOut.PlaybackState == PlaybackState.Playing)

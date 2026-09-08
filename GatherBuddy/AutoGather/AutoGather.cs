@@ -2086,7 +2086,7 @@ namespace GatherBuddy.AutoGather
             if (!string.IsNullOrEmpty(status))
                 AutoStatus = status;
             if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
-                Task.Run(() => _soundHelper.StartHonkSoundTask(3));
+                _soundHelper.StartHonkSoundTask(3);
             CloseGatheringAddons();
             if (GatherBuddy.Config.AutoGatherConfig.GoHomeWhenDone)
                 EnqueueActionWithDelay(() => { GoHome(); });

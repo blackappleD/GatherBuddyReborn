@@ -50,18 +50,6 @@ public partial class VulcanWindow
 
         DrawQueueStatusLine(queue);
         ImGui.Spacing();
-        var disableSkipIfEnough = GatherBuddy.Config.CraftingListQueueDisableSkipIfEnough;
-        using (ImRaii.Disabled(CraftingListQueueRunner.Running))
-        {
-            if (ImGui.Checkbox("队列执行时自动关闭“持有足够时跳过”##queueDisableSkipIfEnough", ref disableSkipIfEnough))
-            {
-                GatherBuddy.Config.CraftingListQueueDisableSkipIfEnough = disableSkipIfEnough;
-                GatherBuddy.Config.Save();
-            }
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("仅影响本次清单队列执行,不会修改各清单自身设置。默认开启。");
-        ImGui.Spacing();
         DrawQueueAddListCombo(queue);
         ImGui.Separator();
         ImGui.Spacing();

@@ -87,7 +87,6 @@ public partial class Configuration : IPluginConfiguration
     public string CraftingLists { get; set; } = string.Empty;
     public List<string> CraftingFolders { get; set; } = [];
     public List<CraftingListQueueEntry> CraftingListQueue { get; set; } = [];
-    public bool CraftingListQueueDisableSkipIfEnough { get; set; } = true;
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
     public bool CraftingCompletionSound { get; set; } = true;
     public int CraftingSoundPlaybackVolume { get; set; } = 100;

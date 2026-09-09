@@ -18,7 +18,6 @@ public static class CraftingListQueueRunner
     private static int  _repeatIndex;
     private static int  _repeatTotal;
     private static bool _waitingForRunStart;
-    private static bool _disableSkipIfEnough;
 
     public static bool Running
         => _running;
@@ -58,7 +57,6 @@ public static class CraftingListQueueRunner
 
         _running    = true;
         _entryIndex = -1;
-        _disableSkipIfEnough = GatherBuddy.Config.CraftingListQueueDisableSkipIfEnough;
         GatherBuddy.Log.Information($"[CraftingListQueueRunner] Starting crafting list queue with {queue.Entries.Count(e => !e.Skipping)} enabled entries");
         return AdvanceToNextRun();
     }
@@ -74,7 +72,6 @@ public static class CraftingListQueueRunner
         _repeatIndex        = 0;
         _repeatTotal        = 0;
         _waitingForRunStart = false;
-        _disableSkipIfEnough = false;
         GatherBuddy.Log.Information($"[CraftingListQueueRunner] Queue stopped{(reason == null ? string.Empty : $": {reason}")}");
     }
 
@@ -155,7 +152,7 @@ public static class CraftingListQueueRunner
         }
 
         GatherBuddy.Log.Information($"[CraftingListQueueRunner] Starting queue entry {_entryIndex + 1}/{queue.Entries.Count}: '{list.Name}' (run {_repeatIndex}/{_repeatTotal})");
-        if (!CraftingListLauncher.TryStart(list, _disableSkipIfEnough))
+        if (!CraftingListLauncher.TryStart(list))
         {
             GatherBuddy.Log.Warning($"[CraftingListQueueRunner] Failed to start '{list.Name}', skipping to the next queue entry");
             Communicator.PrintError($"清单 \"{list.Name}\" 无法开始,已跳过。");

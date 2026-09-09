@@ -8,7 +8,7 @@
     <!-- Keep the upstream version as the prefix and append a three-digit local revision.
          Example: upstream 7.5.0.4 + local revision 001 = 7.5.0.4001. -->
     <UpstreamVersion>7.5.0.4</UpstreamVersion>
-    <LocalRevision>011</LocalRevision>
+    <LocalRevision>012</LocalRevision>
     <Version>$(UpstreamVersion)$(LocalRevision)</Version>
     <Company>SoftOtter</Company>
     <Product>GatherBuddy</Product>

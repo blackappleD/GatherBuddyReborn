@@ -7,7 +7,7 @@ namespace GatherBuddy.Crafting;
 
 public static class CraftingListLauncher
 {
-    public static bool TryStart(CraftingListDefinition list)
+    public static bool TryStart(CraftingListDefinition list, bool disableSkipIfEnough = false)
     {
         if (CraftingGatherBridge.IsQueueRunning)
         {
@@ -24,7 +24,7 @@ public static class CraftingListLauncher
 
         if (list.QuickSynthAll)
             GatherBuddy.Log.Debug($"[CraftingListLauncher] Quick Synth All active (PreferNQ={list.QuickSynthAllPreferNQ}, PrecraftsOnly={list.QuickSynthAllPrecraftsOnly})");
-        var executionPlan = CraftingExecutionPlan.Create(list);
+        var executionPlan = CraftingExecutionPlan.Create(list, disableSkipIfEnough);
 
         var missingFoods = CollectMissingFoods(executionPlan.QueueView, list.Consumables);
         if (missingFoods.Count > 0)

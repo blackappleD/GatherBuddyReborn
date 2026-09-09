@@ -49,9 +49,14 @@ public sealed class CraftingExecutionPlan
         ApplyResolvedPlan(resolvedPlan);
     }
 
-    public static CraftingExecutionPlan Create(CraftingListDefinition list)
+    public static CraftingExecutionPlan Create(CraftingListDefinition list, bool disableSkipIfEnough = false)
     {
         var planningSnapshot = list.CreateRetainerPlanningSnapshot();
+        if (disableSkipIfEnough)
+        {
+            planningSnapshot.SkipIfEnough = false;
+            planningSnapshot.SkipFinalIfEnough = false;
+        }
         var useRetainerCraftableAvailability = planningSnapshot.SkipIfEnough
             && planningSnapshot.RetainerRestock
             && AllaganTools.Enabled;

@@ -18,6 +18,8 @@ public static class CraftingListQueueRunner
     private static int  _repeatIndex;
     private static int  _repeatTotal;
     private static bool _waitingForRunStart;
+    private static bool _runWasActive;
+    private static DateTime _nextRunStartTime;
 
     public static bool Running
         => _running;
@@ -57,6 +59,8 @@ public static class CraftingListQueueRunner
 
         _running    = true;
         _entryIndex = -1;
+        _runWasActive = false;
+        _nextRunStartTime = DateTime.MinValue;
         GatherBuddy.Log.Information($"[CraftingListQueueRunner] Starting crafting list queue with {queue.Entries.Count(e => !e.Skipping)} enabled entries");
         return AdvanceToNextRun();
     }
@@ -72,6 +76,8 @@ public static class CraftingListQueueRunner
         _repeatIndex        = 0;
         _repeatTotal        = 0;
         _waitingForRunStart = false;
+        _runWasActive       = false;
+        _nextRunStartTime   = DateTime.MinValue;
         GatherBuddy.Log.Information($"[CraftingListQueueRunner] Queue stopped{(reason == null ? string.Empty : $": {reason}")}");
     }
 
@@ -86,9 +92,20 @@ public static class CraftingListQueueRunner
 
         if (CraftingGatherBridge.IsQueueRunning)
         {
+            _runWasActive = true;
             _waitingForRunStart = false;
             return;
         }
+
+        if (_runWasActive)
+        {
+            _runWasActive = false;
+            _nextRunStartTime = DateTime.UtcNow.AddSeconds(1);
+            return;
+        }
+
+        if (DateTime.UtcNow < _nextRunStartTime)
+            return;
 
         // The launcher was just called but the bridge has not spun up yet; give it a frame.
         if (_waitingForRunStart)

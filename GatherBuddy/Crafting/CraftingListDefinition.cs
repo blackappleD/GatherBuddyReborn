@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Lumina.Excel.Sheets;
+using Newtonsoft.Json;
 
 namespace GatherBuddy.Crafting;
 
@@ -36,6 +37,15 @@ public class CraftingListDefinition
     public int RepairPercent { get; set; } = 50;
     public bool RetainerRestock { get; set; } = false;
     public bool Ephemeral { get; set; } = false;
+
+    /// <summary>
+    /// Items produced by earlier entries of the crafting list queue in the current run session.
+    /// Planning treats these inventory items as unavailable so "skip if enough" does not count
+    /// output that another queued list just crafted (e.g. shared accessories). Never persisted;
+    /// set only on queue-run snapshots by <see cref="CraftingListQueueRunner"/>.
+    /// </summary>
+    [JsonIgnore]
+    public Dictionary<uint, int> QueueReservedInventory { get; set; } = new();
 
     public bool ShouldApplyQuickSynthAllOverrides(bool isOriginalRecipe)
         => QuickSynthAll && (!QuickSynthAllPrecraftsOnly || !isOriginalRecipe);
@@ -101,6 +111,7 @@ public class CraftingListDefinition
             RepairPercent = RepairPercent,
             RetainerRestock = RetainerRestock,
             Ephemeral = Ephemeral,
+            QueueReservedInventory = new Dictionary<uint, int>(QueueReservedInventory),
         };
 
         foreach (var recipe in Recipes)

@@ -83,11 +83,17 @@ public partial class VulcanWindow
         }
 
         var index = CraftingListQueueRunner.CurrentEntryIndex;
-        var name  = index >= 0 && index < queue.Count
-            ? GatherBuddy.CraftingListManager.GetListByID(queue.Entries[index].ListId)?.Name ?? "?"
-            : "?";
-        ImGui.TextColored(ImGuiColors.ParsedGold,
-            $"正在执行 {index + 1}/{queue.Count}: {name} (第 {CraftingListQueueRunner.CurrentRepeat}/{CraftingListQueueRunner.CurrentRepeatTotal} 次)");
+        if (index >= 0 && index < queue.Count)
+        {
+            var entry = queue.Entries[index];
+            var name  = GatherBuddy.CraftingListManager.GetListByID(entry.ListId)?.Name ?? "?";
+            var suffix = entry.Quantity > 1 ? $" x{entry.Quantity}" : string.Empty;
+            ImGui.TextColored(ImGuiColors.ParsedGold, $"正在执行 {index + 1}/{queue.Count}: {name}{suffix}");
+        }
+        else
+        {
+            ImGui.TextColored(ImGuiColors.ParsedGold, $"正在执行 {index + 1}/{queue.Count}");
+        }
     }
 
     private void DrawQueueAddListCombo(CraftingListQueueManager queue)
@@ -190,7 +196,7 @@ public partial class VulcanWindow
         if (ImGui.InputInt($"##queueQty_{index}", ref qty, qtyStep, qtyStep))
             queue.SetQuantity(index, qty);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("此清单连续执行的次数。\n点击 +/- 调整 1\n按住 Ctrl: ±10\n按住 Shift: ±100");
+            ImGui.SetTooltip("此清单制作的份数(所有配方数量 ×N, 一次性规划采集和制作)。\n点击 +/- 调整 1\n按住 Ctrl: ±10\n按住 Shift: ±100");
 
         ImGui.SameLine(0, innerSpacing);
         var skipIcon    = entry.Skipping ? FontAwesomeIcon.Check : FontAwesomeIcon.Ban;

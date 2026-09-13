@@ -43,7 +43,7 @@ public static class CraftingListPlanner
             _useRetainers = options.UseRetainerCraftableAvailability;
             _consumeIntermediateAvailability = options.ConsumeIntermediateAvailability;
             _consumeFinalAvailability = options.ConsumeFinalAvailability;
-            _availability = new AvailabilityLedger(_useRetainers);
+            _availability = new AvailabilityLedger(_useRetainers, list.QueueReservedInventory);
             _originalRecipeLookup = list.Recipes
                 .GroupBy(item => item.RecipeId)
                 .ToDictionary(group => group.Key, group => group.First());
@@ -334,13 +334,15 @@ public static class CraftingListPlanner
     private sealed class AvailabilityLedger
     {
         private readonly bool _useRetainers;
+        private readonly IReadOnlyDictionary<uint, int> _reservedInventory;
         private readonly Dictionary<uint, PlannedAvailability> _plannedAvailable = new();
         private readonly Dictionary<uint, (int NQ, int HQ)> _inventoryAvailable = new();
         private readonly Dictionary<uint, (int NQ, int HQ)> _retainerAvailable = new();
 
-        public AvailabilityLedger(bool useRetainers)
+        public AvailabilityLedger(bool useRetainers, IReadOnlyDictionary<uint, int>? reservedInventory = null)
         {
-            _useRetainers = useRetainers;
+            _useRetainers      = useRetainers;
+            _reservedInventory = reservedInventory ?? new Dictionary<uint, int>();
         }
 
         public int ConsumePlanned(uint itemId, int requested)
@@ -367,7 +369,7 @@ public static class CraftingListPlanner
         }
 
         public int ConsumeInventory(uint itemId, int requested)
-            => ConsumeTotal(_inventoryAvailable, itemId, requested, GetInventorySplitCounts);
+            => ConsumeTotal(_inventoryAvailable, itemId, requested, GetReservedAdjustedInventoryCounts);
 
         public IngredientQualityDemand ConsumePlanned(uint itemId, IngredientQualityDemand demand)
         {
@@ -388,7 +390,22 @@ public static class CraftingListPlanner
         }
 
         public IngredientQualityDemand ConsumeInventory(uint itemId, IngredientQualityDemand demand)
-            => ConsumeSplit(_inventoryAvailable, itemId, demand, GetInventorySplitCounts);
+            => ConsumeSplit(_inventoryAvailable, itemId, demand, GetReservedAdjustedInventoryCounts);
+
+        /// <summary>
+        /// Live inventory counts minus the items reserved as earlier queue entries' output.
+        /// Reserved amounts come off the HQ count first, since queue-run lists target HQ results.
+        /// </summary>
+        private (int NQ, int HQ) GetReservedAdjustedInventoryCounts(uint itemId)
+        {
+            var (nq, hq) = GetInventorySplitCounts(itemId);
+            if (!_reservedInventory.TryGetValue(itemId, out var reserved) || reserved <= 0)
+                return (nq, hq);
+
+            var fromHQ = Math.Min(hq, reserved);
+            var fromNQ = Math.Min(nq, reserved - fromHQ);
+            return (nq - fromNQ, hq - fromHQ);
+        }
 
         public IngredientQualityDemand ConsumeRetainers(uint itemId, IngredientQualityDemand demand)
             => _useRetainers

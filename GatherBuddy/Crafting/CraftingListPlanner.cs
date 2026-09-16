@@ -173,7 +173,12 @@ public static class CraftingListPlanner
 
             if (_list.SkipIfEnough && _consumeIntermediateAvailability)
             {
-                remainingDemand = _availability.ConsumeInventory(resultItemId, remainingDemand);
+                remainingDemand = _availability.ConsumeInventory(resultItemId, remainingDemand, out var nqRequiredFilledFromHQ);
+
+                // Inventory had no NQ to give, so the HQ pile covered a hard NQ requirement. Put that
+                // much NQ demand back so the NQ intermediates are still queued and the HQ ones survive
+                // for the crafts that actually need HQ.
+                remainingDemand = remainingDemand.WithNQFilledFromHQ(nqRequiredFilledFromHQ);
 
                 if (_useRetainers)
                 {
@@ -393,6 +398,15 @@ public static class CraftingListPlanner
             => ConsumeSplit(_inventoryAvailable, itemId, demand, GetReservedAdjustedInventoryCounts);
 
         /// <summary>
+        /// Consumes inventory for a precraft demand, reporting how many items with a hard NQ requirement
+        /// had to come from the HQ pool (<paramref name="nqRequiredFilledFromHQ"/>). PlanPrecraftDemand
+        /// restores that much NQ demand so the NQ intermediates still get crafted instead of the HQ pile
+        /// being spent in their place.
+        /// </summary>
+        public IngredientQualityDemand ConsumeInventory(uint itemId, IngredientQualityDemand demand, out int nqRequiredFilledFromHQ)
+            => ConsumeSplit(_inventoryAvailable, itemId, demand, GetReservedAdjustedInventoryCounts, out nqRequiredFilledFromHQ);
+
+        /// <summary>
         /// Live inventory counts minus the items reserved as earlier queue entries' output.
         /// Reserved amounts come off the HQ count first, since queue-run lists target HQ results.
         /// </summary>
@@ -456,12 +470,9 @@ public static class CraftingListPlanner
                 return 0;
 
             var consumed = Math.Min(requested, totalAvailable);
-            var remainingNQ = available.NQ;
-            var remainingHQ = available.HQ;
-            var consumeNQ = Math.Min(consumed, remainingNQ);
-            remainingNQ -= consumeNQ;
-            remainingHQ = Math.Max(0, remainingHQ - (consumed - consumeNQ));
-            ledger[itemId] = (remainingNQ, remainingHQ);
+            var consumeNQ = Math.Min(consumed, available.NQ);
+            var consumeHQ = consumed - consumeNQ;
+            ledger[itemId] = (Math.Max(0, available.NQ - consumeNQ), Math.Max(0, available.HQ - consumeHQ));
             return consumed;
         }
 
@@ -470,7 +481,16 @@ public static class CraftingListPlanner
             uint itemId,
             IngredientQualityDemand demand,
             Func<uint, (int NQ, int HQ)> valueFactory)
+            => ConsumeSplit(ledger, itemId, demand, valueFactory, out _);
+
+        private static IngredientQualityDemand ConsumeSplit(
+            Dictionary<uint, (int NQ, int HQ)> ledger,
+            uint itemId,
+            IngredientQualityDemand demand,
+            Func<uint, (int NQ, int HQ)> valueFactory,
+            out int nqRequiredFilledFromHQ)
         {
+            nqRequiredFilledFromHQ = 0;
             if (demand.Total <= 0)
                 return demand;
 
@@ -483,7 +503,7 @@ public static class CraftingListPlanner
             if (available.NQ <= 0 && available.HQ <= 0)
                 return demand;
 
-            var remaining = demand.ConsumeSplit(available.NQ, available.HQ, out var consumedNQ, out var consumedHQ);
+            var remaining = demand.ConsumeSplit(available.NQ, available.HQ, out var consumedNQ, out var consumedHQ, out nqRequiredFilledFromHQ);
             ledger[itemId] = (Math.Max(0, available.NQ - consumedNQ), Math.Max(0, available.HQ - consumedHQ));
             return remaining;
         }

@@ -50,6 +50,15 @@ public readonly record struct IngredientQualityDemand(int RequiredHQ, int Requir
             ? this
             : new(RequiredHQ * factor, RequiredNQ * factor, PreferHQ * factor, PreferNQ * factor);
 
+    /// <summary>
+    /// Records that <paramref name="amount"/> items which had to be NQ were satisfied from the HQ pool.
+    /// Planning keeps the corresponding NQ crafts so that HQ stock is not consumed in place of NQ.
+    /// </summary>
+    public IngredientQualityDemand WithNQFilledFromHQ(int amount)
+        => amount <= 0
+            ? this
+            : new(RequiredHQ, RequiredNQ + amount, PreferHQ, PreferNQ);
+
     public IngredientQualityDemand Add(IngredientQualityDemand other)
         => new(
             RequiredHQ + other.RequiredHQ,
@@ -79,24 +88,65 @@ public readonly record struct IngredientQualityDemand(int RequiredHQ, int Requir
     }
 
     public IngredientQualityDemand ConsumeSplit(int availableNQ, int availableHQ, out int consumedNQ, out int consumedHQ)
+        => ConsumeSplit(availableNQ, availableHQ, out consumedNQ, out consumedHQ, out _);
+
+    /// <param name="nqRequiredFilledFromHQ">
+    /// How many items with a hard NQ requirement had to be taken from the HQ pool. Callers that plan
+    /// production use this to restore the missing NQ demand, so HQ intermediates are not silently spent
+    /// in place of NQ ones.
+    /// </param>
+    public IngredientQualityDemand ConsumeSplit(
+        int availableNQ,
+        int availableHQ,
+        out int consumedNQ,
+        out int consumedHQ,
+        out int nqRequiredFilledFromHQ)
     {
         consumedNQ = 0;
         consumedHQ = 0;
+        nqRequiredFilledFromHQ = 0;
 
         var remainingRequiredHQ = RequiredHQ;
         var remainingRequiredNQ = RequiredNQ;
         var remainingPreferHQ = PreferHQ;
         var remainingPreferNQ = PreferNQ;
 
-        var takeHQ = Math.Min(remainingRequiredHQ, availableHQ);
-        remainingRequiredHQ -= takeHQ;
-        availableHQ -= takeHQ;
-        consumedHQ += takeHQ;
+        static void Fill(
+            ref int required,
+            ref int sameQuality,
+            ref int otherQuality,
+            ref int takenFromSame,
+            ref int takenFromOther)
+        {
+            takenFromSame = Math.Min(required, sameQuality);
+            required -= takenFromSame;
+            sameQuality -= takenFromSame;
 
-        var takeNQ = Math.Min(remainingRequiredNQ, availableNQ);
-        remainingRequiredNQ -= takeNQ;
+            takenFromOther = Math.Min(required, otherQuality);
+            required -= takenFromOther;
+            otherQuality -= takenFromOther;
+        }
+
+        var takeHQ = 0;
+        var takeNQ = 0;
+        Fill(ref remainingRequiredHQ, ref availableHQ, ref availableNQ, ref takeHQ, ref takeNQ);
+        consumedHQ += takeHQ;
+        consumedNQ += takeNQ;
+
+        Fill(ref remainingRequiredNQ, ref availableNQ, ref availableHQ, ref takeNQ, ref takeHQ);
+        consumedNQ += takeNQ;
+        consumedHQ += takeHQ;
+        nqRequiredFilledFromHQ += takeHQ;
+
+        takeNQ = Math.Min(remainingPreferNQ, availableNQ);
+        remainingPreferNQ -= takeNQ;
         availableNQ -= takeNQ;
         consumedNQ += takeNQ;
+
+        takeHQ = Math.Min(remainingPreferNQ, availableHQ);
+        remainingPreferNQ -= takeHQ;
+        availableHQ -= takeHQ;
+        consumedHQ += takeHQ;
 
         takeNQ = Math.Min(remainingPreferNQ, availableNQ);
         remainingPreferNQ -= takeNQ;

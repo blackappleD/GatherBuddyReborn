@@ -24,7 +24,8 @@ public partial class VulcanWindow
         IReadOnlyList<VendorDisplayNpcOption> NpcOptions,
         string FallbackVendorName,
         string IdSuffix,
-        string CostText
+        string CostText,
+        Item? UnlockableItem
     );
     private enum VendorSortColumn { Name, Cost, Currency, Vendor, Location }
     private enum VendorSortDirection { Ascending, Descending }
@@ -286,7 +287,8 @@ public partial class VulcanWindow
                     ? entry.Npcs[0].Name
                     : "Unknown",
             GetVendorDisplayRowId(entry),
-            $"{entry.Cost:N0}");
+            $"{entry.Cost:N0}",
+            GetVendorUnlockableItem(entry.ItemId));
     }
 
     private VendorDisplayNpcOption? GetSelectedVendorOption(VendorDisplayRow row)
@@ -984,6 +986,8 @@ public partial class VulcanWindow
         }
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize - ImGui.GetTextLineHeight()) / 2f);
         ImGui.TextUnformatted(entry.ItemName);
+        if (row.UnlockableItem is { } unlockableItem)
+            DrawVendorUnlockStatus(unlockableItem);
 
         ImGui.TableNextColumn();
         DrawVendorCostCell(row, iconVec, iconSize);

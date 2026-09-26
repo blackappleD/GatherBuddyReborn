@@ -23,6 +23,15 @@ public sealed partial class VendorBuyListManager : IDisposable
         LocationDataLoading,
         AnotherPurchaseRunning,
     }
+
+    public enum RunOutcome
+    {
+        None,
+        Completed,
+        CompletedWithIssues,
+        Failed,
+        Stopped,
+    }
     private readonly record struct VendorExecutionGroup(uint NpcId, VendorMenuShopType MenuShopType, uint ShopId);
     public readonly record struct VendorTargetRequest(uint ItemId, uint TargetQuantity);
     private readonly record struct PendingEntrySelection(
@@ -66,6 +75,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     private readonly HashSet<Guid> _partiallyFulfilledEntryIds = new();
     private VendorPurchaseConstraints? _purchaseConstraints;
     private bool _runHitScripReserveLimit;
+    private bool _runHitCurrencyLimit;
     private string   _statusText = string.Empty;
 
     public VendorBuyListManager()
@@ -104,6 +114,11 @@ public sealed partial class VendorBuyListManager : IDisposable
 
     public bool LastRunHitScripReserveLimit { get; private set; }
 
+    /// <summary> True when an entry in the last run stopped because the player could not afford it. </summary>
+    public bool LastRunHitCurrencyLimit { get; private set; }
+
+    public RunOutcome LastRunOutcome { get; private set; } = RunOutcome.None;
+
     public void Dispose()
     {
         Stop();
@@ -140,7 +155,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         if ((DateTime.UtcNow - _shopCloseStartTime) <= ShopCloseTimeout)
             return;
 
-        LastRunHitScripReserveLimit = _runHitScripReserveLimit;
+        CaptureRunOutcome(RunOutcome.Failed);
         ResetShopCloseWaitState();
         ResetExecutionState();
         _statusText    = "离开上次商人交互超时。";
@@ -404,7 +419,10 @@ public sealed partial class VendorBuyListManager : IDisposable
         _partiallyFulfilledEntryIds.Clear();
         _purchaseConstraints = purchaseConstraints;
         _runHitScripReserveLimit = false;
+        _runHitCurrencyLimit = false;
         LastRunHitScripReserveLimit = false;
+        LastRunHitCurrencyLimit = false;
+        LastRunOutcome = RunOutcome.None;
         var activeList = listId.HasValue
             ? GetList(listId.Value)
             : ActiveList;
@@ -470,6 +488,8 @@ public sealed partial class VendorBuyListManager : IDisposable
         if (!_isRunning && !_waitingForCancelledPurchase && _activeEntryId == null && !_waitingForShopClose)
             return;
         var shouldStopPurchase = _activeEntryId.HasValue && GatherBuddy.VendorPurchaseManager.IsRunning;
+        if (_isRunning)
+            CaptureRunOutcome(RunOutcome.Stopped);
         ResetExecutionState();
         _statusText = "商人列表已停止";
         _activeEntryId = null;
@@ -547,7 +567,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     public static int GetCurrentInventoryAndArmoryCount(uint itemId)
         => ItemHelper.GetInventoryAndArmoryItemCount(itemId);
 
-    private int GetPendingEntryCount(VendorBuyListDefinition? list)
+    public int GetPendingEntryCount(VendorBuyListDefinition? list)
         => list?.Entries.Count(entry => GetRemainingQuantity(entry) > 0) ?? 0;
 
     private void ResetExecutionState()
@@ -560,6 +580,14 @@ public sealed partial class VendorBuyListManager : IDisposable
         _partiallyFulfilledEntryIds.Clear();
         _purchaseConstraints = null;
         _runHitScripReserveLimit = false;
+        _runHitCurrencyLimit = false;
+    }
+
+    private void CaptureRunOutcome(RunOutcome outcome)
+    {
+        LastRunOutcome = outcome;
+        LastRunHitScripReserveLimit = _runHitScripReserveLimit;
+        LastRunHitCurrencyLimit = _runHitCurrencyLimit;
     }
 
     private bool IsDeferredForCurrentRun(VendorBuyListEntry entry)
@@ -585,7 +613,7 @@ public sealed partial class VendorBuyListManager : IDisposable
 
     private void FailCurrentRun(string message)
     {
-        LastRunHitScripReserveLimit = _runHitScripReserveLimit;
+        CaptureRunOutcome(RunOutcome.Failed);
         ResetExecutionState();
         _statusText = message;
     }
@@ -594,7 +622,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     {
         var skippedCount = _skippedEntryIds.Count;
         var partiallyFulfilledCount = _partiallyFulfilledEntryIds.Count;
-        LastRunHitScripReserveLimit = _runHitScripReserveLimit;
+        CaptureRunOutcome(skippedCount == 0 && partiallyFulfilledCount == 0 ? RunOutcome.Completed : RunOutcome.CompletedWithIssues);
         ResetExecutionState();
         if (skippedCount == 0 && partiallyFulfilledCount == 0)
         {
@@ -1239,6 +1267,8 @@ public sealed partial class VendorBuyListManager : IDisposable
 
         if (result.WasLimitedByScripReserve)
             _runHitScripReserveLimit = true;
+        if (result.WasLimitedByCurrency)
+            _runHitCurrencyLimit = true;
 
         switch (result.State)
         {
@@ -1295,6 +1325,7 @@ public sealed partial class VendorBuyListManager : IDisposable
                 BeginShopCloseTransition($"跳过 {result.ItemName} 并继续商人列表");
                 break;
             case VendorPurchaseManager.CompletionState.Cancelled:
+                CaptureRunOutcome(RunOutcome.Stopped);
                 ResetExecutionState();
                 BeginShopCloseTransition("正在离开商人交互");
                 break;

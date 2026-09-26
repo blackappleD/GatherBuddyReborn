@@ -23,6 +23,9 @@ public static class VendorShopResolver
     private static readonly HashSet<uint> TomestoneIds   = new() { 28, 48, 49 };                 // Poetics, Mathematics, Mnemonics
     private static readonly HashSet<uint> HuntSealIds    = new() { AlliedSealCurrencyItemId, CenturioSealCurrencyItemId, SackOfNutsCurrencyItemId };
     private static readonly HashSet<uint> ScripIds       = new() { 33913, 33914, 41784, 41785 }; // Purple/Orange Crafter/Gatherer
+    public const            uint          OccultSilverPieceCurrencyItemId = 45043;
+    // South Horn silver/gold pieces and North Horn silver/gold obols; refreshed from MKDData on init.
+    private static volatile HashSet<uint> _occultCurrencyIds = new() { OccultSilverPieceCurrencyItemId, 45044, 51975, 51976 };
     private static readonly HashSet<uint> CurrencyTypeMapPreferredShopIds = new() { 1770637, 1770638 };
 
     // Sourced from AllaganLib SpecialShopListing.currencies
@@ -141,6 +144,7 @@ public static class VendorShopResolver
         var success = false;
         try
         {
+            RefreshOccultCurrencyIds();
             var npcNames = BuildNpcNameLookup();
             if (npcNames.Count == 0)
             {
@@ -705,8 +709,38 @@ public static class VendorShopResolver
             _ when ScripIds.Contains(currencyItemId) => VendorCurrencyGroup.Scrips,
             _ when currencyItemId == MgpCurrencyItemId => VendorCurrencyGroup.MGP,
             _ when currencyItemId == WolfMarkCurrencyItemId => VendorCurrencyGroup.PvP,
+            _ when IsOccultCrescentCurrency(currencyItemId) => VendorCurrencyGroup.OccultCrescent,
             _ => VendorCurrencyGroup.Other,
         };
+
+    public static bool IsOccultCrescentCurrency(uint currencyItemId)
+        => currencyItemId != 0 && _occultCurrencyIds.Contains(currencyItemId);
+
+    private static void RefreshOccultCurrencyIds()
+    {
+        try
+        {
+            var sheet = Dalamud.GameData.GetExcelSheet<MKDData>();
+            if (sheet == null)
+                return;
+
+            var ids = new HashSet<uint>(_occultCurrencyIds);
+            foreach (var row in sheet)
+            {
+                foreach (var currency in row.CurrencyItem)
+                {
+                    if (currency.RowId != 0)
+                        ids.Add(currency.RowId);
+                }
+            }
+
+            _occultCurrencyIds = ids;
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Debug($"[VendorShopResolver] 读取新月岛货币失败，使用内置 ID: {ex.Message}");
+        }
+    }
 
     private static VendorCurrencyGroup ClassifyCurrency(uint currencyItemId, IReadOnlySet<uint> tomestoneItemIds)
     {
@@ -716,6 +750,7 @@ public static class VendorShopResolver
         if (ScripIds.Contains(currencyItemId))       return VendorCurrencyGroup.Scrips;
         if (currencyItemId == MgpCurrencyItemId)     return VendorCurrencyGroup.MGP;
         if (currencyItemId == WolfMarkCurrencyItemId) return VendorCurrencyGroup.PvP;
+        if (IsOccultCrescentCurrency(currencyItemId)) return VendorCurrencyGroup.OccultCrescent;
         return VendorCurrencyGroup.Other;
     }
     private static uint NormalizeCurrencyItemIdForVendorGrouping(uint currencyItemId, IReadOnlySet<uint> tomestoneItemIds)

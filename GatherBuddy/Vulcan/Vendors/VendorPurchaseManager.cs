@@ -58,7 +58,8 @@ public sealed class VendorPurchaseManager : IDisposable
         uint            CompletedQuantity,
         VendorNpc       Vendor,
         string          Message,
-        bool            WasLimitedByScripReserve
+        bool            WasLimitedByScripReserve,
+        bool            WasLimitedByCurrency = false
     );
 
     private static readonly TimeSpan ActionThrottle       = TimeSpan.FromMilliseconds(400);
@@ -104,6 +105,7 @@ public sealed class VendorPurchaseManager : IDisposable
 
     private static bool IsDirectSpecialShopPurchaseSupported(VendorShopEntry entry, VendorNpc vendor)
         => entry.Group is VendorCurrencyGroup.Tomestones or VendorCurrencyGroup.BicolorGemstones or VendorCurrencyGroup.Scrips
+            or VendorCurrencyGroup.OccultCrescent
         && vendor.MenuShopType == VendorMenuShopType.SpecialShop
         && vendor.ShopItemIndex >= 0
         && vendor.SourceShopId != 0;
@@ -304,7 +306,7 @@ public sealed class VendorPurchaseManager : IDisposable
 
         if (_completedQuantity > 0)
         {
-            CompletePartially(message, wasLimitedByScripReserve);
+            CompletePartially(message, wasLimitedByScripReserve, !wasLimitedByScripReserve);
             return;
         }
 
@@ -314,7 +316,7 @@ public sealed class VendorPurchaseManager : IDisposable
             return;
         }
 
-        Fail(message);
+        Fail(message, true);
     }
 
     private uint GetReservedScripAmount()
@@ -1018,7 +1020,7 @@ public sealed class VendorPurchaseManager : IDisposable
         PurchaseFinished?.Invoke(result);
     }
 
-    private void CompletePartially(string message, bool wasLimitedByScripReserve = false)
+    private void CompletePartially(string message, bool wasLimitedByScripReserve = false, bool wasLimitedByCurrency = false)
     {
         if (_request == null)
             return;
@@ -1040,7 +1042,8 @@ public sealed class VendorPurchaseManager : IDisposable
             _completedQuantity,
             _request.Vendor,
             message,
-            wasLimitedByScripReserve);
+            wasLimitedByScripReserve,
+            wasLimitedByCurrency);
         ResetState();
         PurchaseFinished?.Invoke(result);
     }
@@ -1064,7 +1067,7 @@ public sealed class VendorPurchaseManager : IDisposable
         PurchaseFinished?.Invoke(result);
     }
 
-    private void Fail(string message)
+    private void Fail(string message, bool wasLimitedByCurrency = false)
     {
         if (_request == null)
             return;
@@ -1079,7 +1082,8 @@ public sealed class VendorPurchaseManager : IDisposable
             _completedQuantity,
             _request.Vendor,
             message,
-            false);
+            false,
+            wasLimitedByCurrency);
         ResetState();
         PurchaseFinished?.Invoke(result);
     }

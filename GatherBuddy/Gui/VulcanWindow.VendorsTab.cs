@@ -36,6 +36,7 @@ public partial class VulcanWindow
         (VendorCurrencyGroup.Scrips,           "工票",           33913),
         (VendorCurrencyGroup.MGP,              "MGP",              VendorShopResolver.MgpCurrencyItemId),
         (VendorCurrencyGroup.PvP,              "PvP",              VendorShopResolver.WolfMarkCurrencyItemId),
+        (VendorCurrencyGroup.OccultCrescent,   "新月岛",         VendorShopResolver.OccultSilverPieceCurrencyItemId),
         (VendorCurrencyGroup.Other,            "其他",            0),
     ];
 

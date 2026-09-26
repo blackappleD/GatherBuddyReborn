@@ -31,6 +31,7 @@ public enum VendorCurrencyGroup
     Scrips,
     MGP,
     PvP,
+    OccultCrescent,
     Other,
 }
 

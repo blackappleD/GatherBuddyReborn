@@ -1156,5 +1156,5 @@ public sealed class VendorPurchaseManager : IDisposable
         };
 
     private static int CountItemOnCharacter(uint itemId)
-        => ItemHelper.GetInventoryAndArmoryItemCount(itemId);
+        => ItemHelper.GetInventoryAndArmoryItemCount(itemId, includeEquipped: true);
 }

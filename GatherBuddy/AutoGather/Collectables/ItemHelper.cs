@@ -28,6 +28,22 @@ public static class ItemHelper
     }
     
 
+    private static readonly InventoryType[] InventoryAndArmoryTypes =
+    [
+        InventoryType.Inventory1, InventoryType.Inventory2,
+        InventoryType.Inventory3, InventoryType.Inventory4,
+        InventoryType.Crystals,
+        InventoryType.ArmoryMainHand, InventoryType.ArmoryOffHand,
+        InventoryType.ArmoryHead, InventoryType.ArmoryBody,
+        InventoryType.ArmoryHands, InventoryType.ArmoryWaist,
+        InventoryType.ArmoryLegs, InventoryType.ArmoryFeets,
+        InventoryType.ArmoryEar, InventoryType.ArmoryNeck,
+        InventoryType.ArmoryWrist, InventoryType.ArmoryRings,
+        InventoryType.ArmorySoulCrystal,
+    ];
+
+    // InventoryManager.GetInventoryItemCount does not reliably include armory chest gear,
+    // so the containers are scanned slot by slot instead.
     public static unsafe int GetInventoryAndArmoryItemCount(uint itemId, bool includeEquipped = false)
     {
         try
@@ -35,9 +51,11 @@ public static class ItemHelper
             var inventoryManager = InventoryManager.Instance();
             if (inventoryManager != null)
             {
-                var nq = inventoryManager->GetInventoryItemCount(itemId, false, includeEquipped, true);
-                var hq = inventoryManager->GetInventoryItemCount(itemId, true, includeEquipped, true);
-                return Math.Max(0, nq) + Math.Max(0, hq);
+                var baseItemId = itemId >= 1_000_000 ? itemId - 1_000_000 : itemId;
+                var total      = CountItemInContainers(inventoryManager, baseItemId, InventoryAndArmoryTypes);
+                if (includeEquipped)
+                    total += CountItemInContainers(inventoryManager, baseItemId, [InventoryType.EquippedItems]);
+                return total;
             }
 
             LogInventoryManagerFallback($"[物品助手] 计数物品 {itemId} 时 InventoryManager 不可用，回退到仅背包计数");
@@ -51,6 +69,31 @@ public static class ItemHelper
             .Where(item => item.BaseItemId == itemId)
             .Sum(item => (int)item.Quantity);
     }
+
+    private static unsafe int CountItemInContainers(InventoryManager* inventoryManager, uint baseItemId, ReadOnlySpan<InventoryType> types)
+    {
+        var hqItemId = baseItemId + 1_000_000;
+        var total    = 0;
+        foreach (var type in types)
+        {
+            var container = inventoryManager->GetInventoryContainer(type);
+            if (container == null)
+                continue;
+
+            for (var i = 0; i < container->Size; i++)
+            {
+                var slot = container->GetInventorySlot(i);
+                if (slot == null || slot->ItemId == 0)
+                    continue;
+
+                if (slot->ItemId == baseItemId || slot->ItemId == hqItemId)
+                    total += (int)slot->Quantity;
+            }
+        }
+
+        return total;
+    }
+
     public static List<Item> GetLuminaItemsFromInventory()
     {
         List<Item> luminaItems = new List<Item>();

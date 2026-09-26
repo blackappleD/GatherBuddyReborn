@@ -565,7 +565,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     }
 
     public static int GetCurrentInventoryAndArmoryCount(uint itemId)
-        => ItemHelper.GetInventoryAndArmoryItemCount(itemId);
+        => ItemHelper.GetInventoryAndArmoryItemCount(itemId, includeEquipped: true);
 
     public int GetPendingEntryCount(VendorBuyListDefinition? list)
         => list?.Entries.Count(entry => GetRemainingQuantity(entry) > 0) ?? 0;

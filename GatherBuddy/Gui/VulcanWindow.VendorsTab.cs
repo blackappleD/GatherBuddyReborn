@@ -67,6 +67,7 @@ public partial class VulcanWindow
     private bool                                         _vendorFilterDirty    = true;
     private List<VendorDisplayRow>                       _vendorDisplay        = new();
     private bool                                         _vendorDisplayBuiltWithResolvedLocations;
+    private int                                          _vendorHiddenLearnedCount;
     private Dictionary<VendorCurrencyGroup, int>?        _vendorGroupCounts;
     private Dictionary<VendorGilFilter, int>?            _vendorGilCounts;
     private readonly Dictionary<VendorGilFilter, ushort> _vendorGilFilterIconIds = new();
@@ -924,6 +925,13 @@ public partial class VulcanWindow
         ImGui.TextColored(ImGuiColors.DalamudGrey3, overflow
             ? $"显示 {_vendorDisplay.Count} 条中的 500 条 \u2014 请细化搜索"
             : $"{_vendorDisplay.Count} 个结果");
+        if (_vendorHiddenLearnedCount > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, $"(已隐藏 {_vendorHiddenLearnedCount} 个已学习)");
+        }
+        ImGui.SameLine(0, VulcanUiScaling.Scaled(12f));
+        DrawVendorHideLearnedToggle();
         ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - VulcanUiScaling.Scaled(140f)));
         DrawVendorSortControl();
         ImGui.Spacing();
@@ -987,7 +995,12 @@ public partial class VulcanWindow
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize - ImGui.GetTextLineHeight()) / 2f);
         ImGui.TextUnformatted(entry.ItemName);
         if (row.UnlockableItem is { } unlockableItem)
-            DrawVendorUnlockStatus(unlockableItem);
+        {
+            var unlockStatus = DrawVendorUnlockStatus(unlockableItem);
+            // Learned while listed (item used, or entered Occult Crescent): rebuild so the filter drops it.
+            if (unlockStatus == VendorUnlockStatus.Unlocked && GatherBuddy.Config.VendorHideLearnedItems)
+                _vendorFilterDirty = true;
+        }
 
         ImGui.TableNextColumn();
         DrawVendorCostCell(row, iconVec, iconSize);
@@ -1206,6 +1219,9 @@ public partial class VulcanWindow
         _vendorDisplay = source
             .Select(entry => BuildVendorDisplayRow(entry, locationCacheReady))
             .ToList();
+        _vendorHiddenLearnedCount = GatherBuddy.Config.VendorHideLearnedItems
+            ? _vendorDisplay.RemoveAll(IsVendorRowLearned)
+            : 0;
         SortVendorDisplayRows(_vendorDisplay);
 
         if (_vendorEditingQuantityKey.HasValue

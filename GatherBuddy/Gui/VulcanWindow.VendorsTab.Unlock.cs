@@ -63,7 +63,23 @@ public partial class VulcanWindow
         return inventory == null ? 0 : inventory->GetInventoryItemCount(itemId);
     }
 
-    private static void DrawVendorUnlockStatus(Item item)
+    private static bool IsVendorRowLearned(VendorDisplayRow row)
+        => row.UnlockableItem is { } item && GetVendorUnlockStatus(item) == VendorUnlockStatus.Unlocked;
+
+    private void DrawVendorHideLearnedToggle()
+    {
+        var hideLearned = GatherBuddy.Config.VendorHideLearnedItems;
+        if (ImGui.Checkbox("隐藏已学习##vendorHideLearned", ref hideLearned))
+        {
+            GatherBuddy.Config.VendorHideLearnedItems = hideLearned;
+            GatherBuddy.Config.Save();
+            _vendorFilterDirty = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("隐藏已学习的传承录、坐骑、宠物、灵魂碎晶等物品。\n辅助职业的学习状态只能在新月岛内读取，岛外不会隐藏灵魂碎晶。");
+    }
+
+    private static VendorUnlockStatus DrawVendorUnlockStatus(Item item)
     {
         var status = GetVendorUnlockStatus(item);
         var owned  = GetVendorOwnedCount(item.RowId);
@@ -84,7 +100,7 @@ public partial class VulcanWindow
             ImGui.SetTooltip(tooltip);
 
         if (owned <= 0)
-            return;
+            return status;
 
         ImGui.SameLine(0, VulcanUiScaling.Scaled(4f));
         ImGui.TextColored(ImGuiColors.DalamudYellow, $"[持有 {owned}]");
@@ -92,5 +108,6 @@ public partial class VulcanWindow
             ImGui.SetTooltip(status == VendorUnlockStatus.Unlocked
                 ? "背包中还有未使用的，已学习，可出售或丢弃"
                 : "背包中已有，使用即可学习，无需再购买");
+        return status;
     }
 }

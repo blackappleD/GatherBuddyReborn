@@ -930,9 +930,13 @@ public partial class VulcanWindow
             ImGui.SameLine();
             ImGui.TextColored(ImGuiColors.DalamudGrey3, $"(已隐藏 {_vendorHiddenLearnedCount} 个已学习)");
         }
-        ImGui.SameLine(0, VulcanUiScaling.Scaled(12f));
+        // Anchor the toggle to the sort control so it doesn't shift with the result-count text.
+        var countTextEndX = ImGui.GetItemRectMax().X - ImGui.GetWindowPos().X;
+        var sortControlX  = ImGui.GetWindowContentRegionMax().X - VulcanUiScaling.Scaled(140f);
+        var hideToggleX   = sortControlX - GetVendorHideLearnedToggleWidth() - VulcanUiScaling.Scaled(16f);
+        ImGui.SameLine(Math.Max(countTextEndX + VulcanUiScaling.Scaled(12f), hideToggleX));
         DrawVendorHideLearnedToggle();
-        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - VulcanUiScaling.Scaled(140f)));
+        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), sortControlX));
         DrawVendorSortControl();
         ImGui.Spacing();
         var showAutomationControls = _vendorCategory is VendorShopType.GilShop or VendorShopType.SpecialCurrency or VendorShopType.GrandCompanySeals;

@@ -66,10 +66,15 @@ public partial class VulcanWindow
     private static bool IsVendorRowLearned(VendorDisplayRow row)
         => row.UnlockableItem is { } item && GetVendorUnlockStatus(item) == VendorUnlockStatus.Unlocked;
 
+    private const string VendorHideLearnedLabel = "隐藏已学习";
+
+    private static float GetVendorHideLearnedToggleWidth()
+        => ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize(VendorHideLearnedLabel).X;
+
     private void DrawVendorHideLearnedToggle()
     {
         var hideLearned = GatherBuddy.Config.VendorHideLearnedItems;
-        if (ImGui.Checkbox("隐藏已学习##vendorHideLearned", ref hideLearned))
+        if (ImGui.Checkbox($"{VendorHideLearnedLabel}##vendorHideLearned", ref hideLearned))
         {
             GatherBuddy.Config.VendorHideLearnedItems = hideLearned;
             GatherBuddy.Config.Save();

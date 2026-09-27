@@ -7,8 +7,8 @@
     <AssemblyName>GatherBuddyReborn-bld</AssemblyName>
     <!-- Keep the upstream version as the prefix and append a three-digit local revision.
          Example: upstream 7.5.0.4 + local revision 001 = 7.5.0.4001. -->
-    <UpstreamVersion>7.5.0.4</UpstreamVersion>
-    <LocalRevision>022</LocalRevision>
+    <UpstreamVersion>7.5.0.5</UpstreamVersion>
+    <LocalRevision>001</LocalRevision>
     <Version>$(UpstreamVersion)$(LocalRevision)</Version>
     <Company>SoftOtter</Company>
     <Product>GatherBuddy</Product>

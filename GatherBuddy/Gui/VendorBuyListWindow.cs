@@ -32,6 +32,7 @@ public sealed partial class VendorBuyListWindow : Window
     ];
     private readonly Dictionary<uint, ushort> _currencyIconIds = new();
     private readonly Dictionary<uint, string> _currencyNames = new();
+    private readonly Dictionary<uint, uint>   _itemLevels    = new();
 
     private readonly Dictionary<uint, string> _zoneNames = new();
     private bool   _wasFocusedLastFrame;
@@ -431,11 +432,12 @@ public sealed partial class VendorBuyListWindow : Window
         const ImGuiTableFlags tableFlags = ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersInnerV
                                          | ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg
                                          | ImGuiTableFlags.SizingStretchProp;
-        if (!ImGui.BeginTable("##vendorBuyListTable", 8, tableFlags, new Vector2(-1, -1)))
+        if (!ImGui.BeginTable("##vendorBuyListTable", 9, tableFlags, new Vector2(-1, -1)))
             return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("物品",     ImGuiTableColumnFlags.WidthStretch, 1.25f);
+        ImGui.TableSetupColumn("品级",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(40f));
         ImGui.TableSetupColumn("价格",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(58f));
         ImGui.TableSetupColumn("目标",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(78f));
         ImGui.TableSetupColumn("持有",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(54f));
@@ -561,6 +563,14 @@ public sealed partial class VendorBuyListWindow : Window
             ImGui.TextUnformatted(entry.ItemName);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(entry.ItemName);
+
+        ImGui.TableNextColumn();
+        ImGui.AlignTextToFramePadding();
+        var itemLevel = GetItemLevel(entry.ItemId);
+        if (itemLevel > 0)
+            ImGui.TextUnformatted($"{itemLevel}");
+        else
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "-");
 
         ImGui.TableNextColumn();
         ImGui.AlignTextToFramePadding();
@@ -824,6 +834,19 @@ public sealed partial class VendorBuyListWindow : Window
             : $"区域 {location.TerritoryId}";
         _zoneNames[location.TerritoryId] = zoneName;
         return zoneName;
+    }
+
+    private uint GetItemLevel(uint itemId)
+    {
+        if (_itemLevels.TryGetValue(itemId, out var itemLevel))
+            return itemLevel;
+
+        var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
+        itemLevel = itemId != 0 && itemSheet != null && itemSheet.TryGetRow(itemId, out var item)
+            ? item.LevelItem.RowId
+            : 0;
+        _itemLevels[itemId] = itemLevel;
+        return itemLevel;
     }
 
     private ushort GetCurrencyIconId(uint currencyItemId)

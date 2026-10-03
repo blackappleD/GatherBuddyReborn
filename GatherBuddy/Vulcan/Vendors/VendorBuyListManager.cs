@@ -373,6 +373,25 @@ public sealed partial class VendorBuyListManager : IDisposable
         return true;
     }
 
+    public int UpdateEntriesVendor(IReadOnlyList<(Guid EntryId, VendorNpc Vendor)> assignments, string vendorName, int skippedCount)
+    {
+        if (IsBusy || assignments.Count == 0)
+            return 0;
+
+        var updated = 0;
+        foreach (var (entryId, vendor) in assignments)
+        {
+            if (UpdateEntryVendor(entryId, vendor))
+                ++updated;
+        }
+
+        var failed = assignments.Count - updated;
+        _statusText = $"已将 {updated} 个条目设置为商人 '{vendorName}'"
+                    + (failed > 0 ? $"，{failed} 个失败" : string.Empty)
+                    + (skippedCount > 0 ? $"，{skippedCount} 个条目该商人不出售" : string.Empty);
+        return updated;
+    }
+
     public void RemoveEntry(Guid entryId)
     {
         if (!TryFindEntry(entryId, out var list, out var entry) || list == null || entry == null)

@@ -298,6 +298,9 @@ public sealed partial class VendorBuyListWindow : Window
                 manager.Clear();
         }
 
+        ImGui.SameLine();
+        DrawBulkVendorCombo(entries, manager);
+
         if (entries.Count > 0)
         {
             ImGui.Spacing();
@@ -631,6 +634,71 @@ public sealed partial class VendorBuyListWindow : Window
 
         return options;
     }
+
+    private void DrawBulkVendorCombo(IReadOnlyList<VendorBuyListEntry> entries, VendorBuyListManager manager)
+    {
+        using (ImRaii.Disabled(entries.Count == 0 || manager.IsBusy))
+        {
+            ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(220f));
+            if (!ImGui.BeginCombo("##vendorBuyListBulkVendor", "批量设置商人..."))
+            {
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("将清单中所有可由该商人出售的条目一键切换到该商人。\n括号内为该商人可出售的条目数。");
+                return;
+            }
+
+            var entryOptions = entries
+                .Select(entry =>
+                {
+                    manager.TryResolveLiveEntry(entry, out var liveEntry, out var resolvedVendor, out _);
+                    return (Entry: entry, Options: BuildVendorOptions(liveEntry), Resolved: resolvedVendor);
+                })
+                .ToList();
+
+            var candidates = entryOptions
+                .SelectMany(e => e.Options.DistinctBy(option => option.Npc.NpcId))
+                .GroupBy(option => option.Npc.NpcId)
+                .Select(group => (NpcId: group.Key, Option: group.First(), Count: group.Count()))
+                .OrderByDescending(c => c.Count)
+                .ThenBy(c => c.Option.Npc.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(c => c.Option.ZoneName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (candidates.Count == 0)
+                ImGui.TextColored(ImGuiColors.DalamudGrey3, "没有可用的商人");
+
+            foreach (var (npcId, option, count) in candidates)
+            {
+                var name  = GetBulkVendorLabel(option);
+                var label = $"{name}  ({count}/{entries.Count})##vendorBuyListBulkVendor_{npcId}";
+                if (!ImGui.Selectable(label, false))
+                    continue;
+
+                var assignments = new List<(Guid EntryId, VendorNpc Vendor)>();
+                foreach (var (entry, options, resolved) in entryOptions)
+                {
+                    var matches = options.Where(o => o.Npc.NpcId == npcId).ToList();
+                    if (matches.Count == 0)
+                        continue;
+
+                    // Keep the current shop route when the entry is already sold through this NPC.
+                    var match = matches.FirstOrDefault(o => VendorPreferenceHelper.MatchesVendor(o.Npc, resolved))
+                             ?? matches.FirstOrDefault(o => resolved != null && o.Npc.MenuShopType == resolved.MenuShopType && o.Npc.ShopId == resolved.ShopId)
+                             ?? matches[0];
+                    assignments.Add((entry.Id, match.Npc));
+                }
+
+                manager.UpdateEntriesVendor(assignments, name, entries.Count - assignments.Count);
+            }
+
+            ImGui.EndCombo();
+        }
+    }
+
+    private static string GetBulkVendorLabel(VendorListNpcOption option)
+        => string.IsNullOrWhiteSpace(option.ZoneName)
+            ? $"{option.Npc.Name} [{option.Npc.NpcId}]"
+            : $"{option.Npc.Name} ({option.ZoneName})";
 
     private static VendorListNpcOption? GetSelectedVendorOption(IReadOnlyList<VendorListNpcOption> vendorOptions, VendorNpc? resolvedVendor)
     {

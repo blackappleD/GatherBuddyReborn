@@ -116,6 +116,7 @@ public partial class Interface
         ImGui.SameLine();
         var vulcanButtonWidth = Math.Max(95f * Scale, ImGui.CalcTextSize("Vulcan").X + FramePadding.X * 5f);
         var collectablesButtonWidth = Math.Max(125f * Scale, ImGui.CalcTextSize("收藏品").X + FramePadding.X * 5f);
+        var vendorButtonWidth = Math.Max(125f * Scale, ImGui.CalcTextSize("商店").X + FramePadding.X * 5f);
         {
             using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
             using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.30f, 0.25f, 0.46f, 1f));
@@ -155,6 +156,26 @@ public partial class Interface
             }
         }
         ImGuiUtil.HoverTooltip("打开收藏品窗口");
+        ImGui.SameLine();
+        {
+            using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
+            using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.50f, 0.36f, 0.20f, 1f));
+            using var buttonHoveredColor = ImRaii.PushColor(ImGuiCol.ButtonHovered, new Vector4(0.60f, 0.44f, 0.24f, 1f));
+            using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.41f, 0.29f, 0.16f, 1f));
+            if (ImGui.Button("商店", new Vector2(vendorButtonWidth, 0f)))
+            {
+                if (GatherBuddy.VendorBuyListWindow == null)
+                {
+                    GatherBuddy.Log.Debug("[Interface] 商店标题按钮已点击, 但商店购买清单窗口不可用");
+                }
+                else
+                {
+                    GatherBuddy.Log.Debug("[Interface] 从主标题按钮打开商店购买清单");
+                    GatherBuddy.VendorBuyListWindow.Open();
+                }
+            }
+        }
+        ImGuiUtil.HoverTooltip("打开商店购买清单窗口");
         ImGui.SameLine();
         _headerCache.AlarmButtonSize = (ImGui.GetContentRegionAvail().X - ItemSpacing.X) / 2 * Vector2.UnitX;
         DrawLastItemAlarm();

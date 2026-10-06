@@ -1,16 +1,26 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
+using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Interfaces;
 using GatherBuddy.Vulcan.Vendors;
 
 namespace GatherBuddy.Plugin;
 
 public sealed class GatherBuddyIpc : IDisposable
 {
-    public const int IpcVersion = 3;
+    public const int IpcVersion = 4;
 
     /// <summary> Returned by <see cref="VendorBuyListStart"/> when no list matches the requested name. </summary>
     public const int VendorBuyListNotFound = -1;
+
+    /// <summary> Returned by the AutoGatherList methods when no list matches the requested name. </summary>
+    public const int AutoGatherListNotFound = -1;
+
+    /// <summary> Returned by <see cref="AutoGatherListSet"/> when the name or the item string is invalid. </summary>
+    public const int AutoGatherListInvalidArgument = -2;
 
     private readonly GatherBuddy _plugin;
 
@@ -110,6 +120,139 @@ public sealed class GatherBuddyIpc : IDisposable
     [EzIPC]
     public (int Outcome, bool HitCurrencyLimit) VendorBuyListLastRun()
         => ((int)GatherBuddy.VendorBuyListManager.LastRunOutcome, GatherBuddy.VendorBuyListManager.LastRunHitCurrencyLimit);
+
+    /// <summary> Names of all auto-gather lists. </summary>
+    [EzIPC]
+    public string[] AutoGatherListNames()
+        => _plugin.AutoGatherListsManager.Lists.Select(list => list.Name).ToArray();
+
+    /// <summary>
+    /// Creates the list with the given name, or replaces all items of an existing one (case-insensitive match).
+    /// <paramref name="items"/> is a whitespace, comma or semicolon separated list of "itemIdxQuantity" (or just "itemId" for 1),
+    /// e.g. "29673x40 29678x60". "Remove completed items" is switched on; a new list starts disabled.
+    /// Returns the number of items in the list, or <see cref="AutoGatherListInvalidArgument"/>.
+    /// </summary>
+    [EzIPC]
+    public int AutoGatherListSet(string listName, string items)
+    {
+        if (string.IsNullOrWhiteSpace(listName))
+        {
+            Communicator.PrintError("[GatherBuddy Reborn] AutoGatherListSet: 列表名不能为空。");
+            return AutoGatherListInvalidArgument;
+        }
+
+        if (!TryParseGatherItems(items, out var parsed, out var error))
+        {
+            Communicator.PrintError($"[GatherBuddy Reborn] AutoGatherListSet: {error}");
+            return AutoGatherListInvalidArgument;
+        }
+
+        var manager = _plugin.AutoGatherListsManager;
+        var list    = manager.FindList(listName);
+        if (list == null)
+        {
+            list = new AutoGatherList
+            {
+                Name                 = listName.Trim(),
+                RemoveCompletedItems = true,
+            };
+            foreach (var (item, quantity) in parsed)
+                list.Add(item, quantity);
+            manager.AddList(list);
+        }
+        else
+        {
+            list.RemoveCompletedItems = true;
+            manager.ReplaceItems(list, parsed);
+        }
+
+        return list.Items.Count;
+    }
+
+    /// <summary>
+    /// Enables only the given list and remembers which lists were enabled before (kept from the first solo until
+    /// <see cref="AutoGatherListRestore"/>). Returns 1 on success, 0 when the list could not be enabled (e.g. missing bait),
+    /// or <see cref="AutoGatherListNotFound"/>.
+    /// </summary>
+    [EzIPC]
+    public int AutoGatherListSolo(string listName)
+    {
+        var list = _plugin.AutoGatherListsManager.FindList(listName ?? string.Empty);
+        if (list == null)
+            return AutoGatherListNotFound;
+
+        return _plugin.AutoGatherListsManager.SoloList(list) ? 1 : 0;
+    }
+
+    /// <summary> Restores the enabled lists from before <see cref="AutoGatherListSolo"/>. Returns false when no solo was active. </summary>
+    [EzIPC]
+    public bool AutoGatherListRestore()
+        => _plugin.AutoGatherListsManager.RestoreSolo();
+
+    [EzIPC]
+    public bool AutoGatherListIsSoloActive()
+        => _plugin.AutoGatherListsManager.IsSoloActive;
+
+    /// <summary> Deletes the list with the given name. Returns false when no list matches. </summary>
+    [EzIPC]
+    public bool AutoGatherListRemove(string listName)
+    {
+        var list = _plugin.AutoGatherListsManager.FindList(listName ?? string.Empty);
+        if (list == null)
+            return false;
+
+        _plugin.AutoGatherListsManager.DeleteList(list);
+        return true;
+    }
+
+    private static bool TryParseGatherItems(string? text, out List<(IGatherable Item, uint Quantity)> items, out string error)
+    {
+        items = [];
+        error = string.Empty;
+        var seen   = new HashSet<uint>();
+        var tokens = (text ?? string.Empty).Split([' ', '\t', '\r', '\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0)
+        {
+            error = "物品列表为空。";
+            return false;
+        }
+
+        foreach (var token in tokens)
+        {
+            var parts = token.Split(['x', 'X', '*'], 2);
+            if (!uint.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var itemId))
+            {
+                error = $"无法解析物品 ID: '{token}'。";
+                return false;
+            }
+
+            var quantity = 1u;
+            if (parts.Length == 2 && !uint.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out quantity))
+            {
+                error = $"无法解析数量: '{token}'。";
+                return false;
+            }
+
+            IGatherable? item = GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var gatherable)
+                ? gatherable
+                : GatherBuddy.GameData.Fishes.GetValueOrDefault(itemId);
+            if (item == null)
+            {
+                error = $"物品 {itemId} 不是可采集物或鱼。";
+                return false;
+            }
+
+            if (!seen.Add(itemId))
+            {
+                error = $"物品 {itemId} 重复出现。";
+                return false;
+            }
+
+            items.Add((item, quantity));
+        }
+
+        return true;
+    }
 
     [EzIPCEvent]
     public Action AutoGatherWaiting;

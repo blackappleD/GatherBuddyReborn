@@ -106,6 +106,9 @@ public partial class Configuration : IPluginConfiguration
     public bool   VendorNpcLocationsDataShareFirst { get; set; } = true;
     public bool   VendorHideLearnedItems { get; set; } = false;
 
+    /// <summary> Names of the auto-gather lists that were enabled before an IPC solo; null when no solo is active. </summary>
+    public List<string>? AutoGatherListSoloBackup { get; set; }
+
     // Weather tab
     public bool ShowWeatherNames { get; set; } = true;
 

@@ -1002,10 +1002,15 @@ public sealed partial class VendorBuyListManager : IDisposable
         }
         if (candidates.Count > 0)
             GatherBuddy.Log.Debug(
-                $"[VendorBuyListManager] Could not resolve a supported default vendor entry for item {itemId}; found {candidates.Count:N0} candidate vendor entries but none had an automation-supported route.");
+                $"[VendorBuyListManager] Could not resolve a supported default vendor entry for item {itemId}; found {candidates.Count:N0} candidate vendor entries but none had an automation-supported route: "
+              + string.Join("; ", candidates.Select(DescribeCandidateRoutes)));
 
         return false;
     }
+
+    private static string DescribeCandidateRoutes(VendorShopEntry candidate)
+        => $"shopType={candidate.ShopType}, group={candidate.Group}, currency={candidate.CurrencyItemId} [{string.Join(", ", candidate.Npcs.Select(npc =>
+            $"{npc.NpcId}/{npc.MenuShopType}/shop={npc.ShopId}/source={npc.SourceShopId}:{npc.ShopItemIndex}/inclusion={npc.InclusionPageIndex}"))}]";
 
     private static IEnumerable<VendorShopEntry> GetDefaultEntryCandidates(uint itemId)
         => VendorShopResolver.GilShopEntries

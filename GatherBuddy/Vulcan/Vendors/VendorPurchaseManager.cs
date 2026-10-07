@@ -103,9 +103,16 @@ public sealed class VendorPurchaseManager : IDisposable
         && _request.ShopType == entry.ShopType
         && VendorPreferenceHelper.MatchesVendor(_request.Vendor, npc);
 
+    /// <summary> Currencies in <see cref="VendorCurrencyGroup.Other"/> whose SpecialShop vendors are allowed to use the direct purchase flow. </summary>
+    private static readonly HashSet<uint> DirectSpecialShopOtherCurrencyItemIds =
+    [
+        41629, // 金碟声誉 (金碟声誉兑换员, SpecialShop 1770724)
+    ];
+
     private static bool IsDirectSpecialShopPurchaseSupported(VendorShopEntry entry, VendorNpc vendor)
-        => entry.Group is VendorCurrencyGroup.Tomestones or VendorCurrencyGroup.BicolorGemstones or VendorCurrencyGroup.Scrips
-            or VendorCurrencyGroup.OccultCrescent
+        => (entry.Group is VendorCurrencyGroup.Tomestones or VendorCurrencyGroup.BicolorGemstones or VendorCurrencyGroup.Scrips
+                or VendorCurrencyGroup.OccultCrescent
+            || entry.Group == VendorCurrencyGroup.Other && DirectSpecialShopOtherCurrencyItemIds.Contains(entry.CurrencyItemId))
         && vendor.MenuShopType == VendorMenuShopType.SpecialShop
         && vendor.ShopItemIndex >= 0
         && vendor.SourceShopId != 0;

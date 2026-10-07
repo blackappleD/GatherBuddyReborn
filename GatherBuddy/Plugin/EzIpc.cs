@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
@@ -101,12 +102,14 @@ internal static class EzIPC
 
                 if (isAction)
                 {
-                    RegisterActionProvider(fullName, method, instance, parameters.Length);
+                    RegisterActionProvider(fullName, method, instance, parameters);
                 }
                 else
                 {
                     RegisterFuncProvider(fullName, method, instance, parameters, returnType);
                 }
+
+                GatherBuddy.Log.Debug($"Registered IPC provider {fullName}");
             }
             catch (Exception e)
             {
@@ -176,78 +179,47 @@ internal static class EzIPC
         }
     }
 
-    private static void RegisterActionProvider(string name, MethodInfo method, object? instance, int paramCount)
+    private static void RegisterActionProvider(string name, MethodInfo method, object? instance, ParameterInfo[] parameters)
     {
-        switch (paramCount)
+        var paramTypes = parameters.Select(p => p.ParameterType).ToArray();
+        var allTypes = paramTypes.Append(typeof(object)).ToArray();
+        var (providerType, provider) = GetIpcProvider(name, allTypes);
+        var action = Delegate.CreateDelegate(Expression.GetActionType(paramTypes), instance, method);
+
+        providerType.GetMethod("RegisterAction")!.Invoke(provider, new object[] { action });
+        DisposalActions.Add(() =>
         {
-            case 0:
-            {
-                var provider = Dalamud.PluginInterface.GetIpcProvider<object>(name);
-                var action = (Action)Delegate.CreateDelegate(typeof(Action), instance, method);
-                provider.RegisterAction(action);
-                DisposalActions.Add(() => provider?.UnregisterAction());
-                break;
-            }
-            case 1:
-            {
-                var p1Type = method.GetParameters()[0].ParameterType;
-                var providerType = typeof(ICallGateProvider<,>).MakeGenericType(p1Type, typeof(object));
-                var getProviderMethod = typeof(IDalamudPluginInterface)
-                    .GetMethods()
-                    .First(m => m.Name == "GetIpcProvider" && m.GetGenericArguments().Length == 2)
-                    .MakeGenericMethod(p1Type, typeof(object));
-                var provider = getProviderMethod.Invoke(Dalamud.PluginInterface, new object[] { name });
-                
-                var actionType = typeof(Action<>).MakeGenericType(p1Type);
-                var action = Delegate.CreateDelegate(actionType, instance, method);
-                
-                providerType.GetMethod("RegisterAction")!.Invoke(provider, new object[] { action });
-                DisposalActions.Add(() =>
-                {
-                    if (provider is ICallGateProvider baseProvider)
-                        baseProvider.UnregisterAction();
-                });
-                break;
-            }
-        }
+            if (provider is ICallGateProvider baseProvider)
+                baseProvider.UnregisterAction();
+        });
     }
 
     private static void RegisterFuncProvider(string name, MethodInfo method, object? instance, ParameterInfo[] parameters, Type returnType)
     {
-        var paramTypes = parameters.Select(p => p.ParameterType).ToArray();
-        var allTypes = paramTypes.Concat(new[] { returnType }).ToArray();
-        
-        Type providerType;
-        Type delegateType;
-        
-        if (paramTypes.Length == 0)
-        {
-            providerType = typeof(ICallGateProvider<>).MakeGenericType(returnType);
-            delegateType = typeof(Func<>).MakeGenericType(returnType);
-        }
-        else if (paramTypes.Length == 1)
-        {
-            providerType = typeof(ICallGateProvider<,>).MakeGenericType(allTypes);
-            delegateType = typeof(Func<,>).MakeGenericType(allTypes);
-        }
-        else
-        {
-            return;
-        }
+        var allTypes = parameters.Select(p => p.ParameterType).Append(returnType).ToArray();
+        var (providerType, provider) = GetIpcProvider(name, allTypes);
+        var func = Delegate.CreateDelegate(Expression.GetFuncType(allTypes), instance, method);
 
-        var getProviderMethod = typeof(IDalamudPluginInterface)
-            .GetMethods()
-            .First(m => m.Name == "GetIpcProvider" && m.GetGenericArguments().Length == allTypes.Length)
-            .MakeGenericMethod(allTypes);
-        var provider = getProviderMethod.Invoke(Dalamud.PluginInterface, new object[] { name });
-        var func = Delegate.CreateDelegate(delegateType, instance, method);
-        
         providerType.GetMethod("RegisterFunc")!.Invoke(provider, new object[] { func });
         DisposalActions.Add(() =>
         {
             if (provider is ICallGateProvider baseProvider)
                 baseProvider.UnregisterFunc();
         });
+    }
+
+    /// <summary> Gets the call gate provider for <paramref name="allTypes"/> (parameter types followed by the return type, or object for actions). </summary>
+    private static (Type ProviderType, object Provider) GetIpcProvider(string name, Type[] allTypes)
+    {
+        var providerDefinition = typeof(ICallGateProvider).Assembly.GetType($"{typeof(ICallGateProvider).FullName}`{allTypes.Length}");
+        var getProviderMethod = typeof(IDalamudPluginInterface)
+            .GetMethods()
+            .FirstOrDefault(m => m.Name == "GetIpcProvider" && m.GetGenericArguments().Length == allTypes.Length);
+        if (providerDefinition == null || getProviderMethod == null)
+            throw new NotSupportedException($"IPC with {allTypes.Length - 1} parameter(s) is not supported by Dalamud");
+
+        var provider = getProviderMethod.MakeGenericMethod(allTypes).Invoke(Dalamud.PluginInterface, new object[] { name })!;
+        return (providerDefinition.MakeGenericType(allTypes), provider);
     }
 
     private static object? CreateSubscriber(string name, Type delegateType)

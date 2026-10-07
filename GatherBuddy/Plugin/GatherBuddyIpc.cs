@@ -11,7 +11,7 @@ namespace GatherBuddy.Plugin;
 
 public sealed class GatherBuddyIpc : IDisposable
 {
-    public const int IpcVersion = 5;
+    public const int IpcVersion = 6;
 
     /// <summary> Returned by <see cref="VendorBuyListStart"/> when no list matches the requested name. </summary>
     public const int VendorBuyListNotFound = -1;

@@ -164,18 +164,18 @@ public partial class Interface
             using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.41f, 0.29f, 0.16f, 1f));
             if (ImGui.Button("商店", new Vector2(vendorButtonWidth, 0f)))
             {
-                if (GatherBuddy.VendorBuyListWindow == null)
+                if (GatherBuddy.VulcanWindow == null)
                 {
-                    GatherBuddy.Log.Debug("[Interface] 商店标题按钮已点击, 但商店购买清单窗口不可用");
+                    GatherBuddy.Log.Debug("[Interface] 商店标题按钮已点击, 但 Vulcan 窗口不可用");
                 }
                 else
                 {
-                    GatherBuddy.Log.Debug("[Interface] 从主标题按钮打开商店购买清单");
-                    GatherBuddy.VendorBuyListWindow.Open();
+                    GatherBuddy.Log.Debug("[Interface] 从主标题按钮打开 Vulcan 商店标签");
+                    GatherBuddy.VulcanWindow.OpenToVendors();
                 }
             }
         }
-        ImGuiUtil.HoverTooltip("打开商店购买清单窗口");
+        ImGuiUtil.HoverTooltip("打开 Vulcan 商店");
         ImGui.SameLine();
         _headerCache.AlarmButtonSize = (ImGui.GetContentRegionAvail().X - ItemSpacing.X) / 2 * Vector2.UnitX;
         DrawLastItemAlarm();

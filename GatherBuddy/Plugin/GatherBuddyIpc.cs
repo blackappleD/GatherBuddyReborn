@@ -11,10 +11,19 @@ namespace GatherBuddy.Plugin;
 
 public sealed class GatherBuddyIpc : IDisposable
 {
-    public const int IpcVersion = 4;
+    public const int IpcVersion = 5;
 
     /// <summary> Returned by <see cref="VendorBuyListStart"/> when no list matches the requested name. </summary>
     public const int VendorBuyListNotFound = -1;
+
+    /// <summary> Returned by <see cref="VendorBuyListReplaceByName"/> when the list name is empty. </summary>
+    public const int VendorBuyListInvalidArgument = -2;
+
+    /// <summary> Returned by <see cref="VendorBuyListReplaceByName"/> while a list is running; nothing is changed. </summary>
+    public const int VendorBuyListBusy = -3;
+
+    /// <summary> Returned by <see cref="VendorBuyListReplaceByName"/> while vendor data is still loading; nothing is changed. </summary>
+    public const int VendorBuyListNotReady = -4;
 
     /// <summary> Returned by the AutoGatherList methods when no list matches the requested name. </summary>
     public const int AutoGatherListNotFound = -1;
@@ -120,6 +129,33 @@ public sealed class GatherBuddyIpc : IDisposable
     [EzIPC]
     public (int Outcome, bool HitCurrencyLimit) VendorBuyListLastRun()
         => ((int)GatherBuddy.VendorBuyListManager.LastRunOutcome, GatherBuddy.VendorBuyListManager.LastRunHitCurrencyLimit);
+
+    /// <summary>
+    /// Creates the vendor buy list with the given name, or replaces all entries of an existing one (case-insensitive match).
+    /// The active list is not changed. Items whose vendor cannot be resolved are skipped.
+    /// Returns the number of entries written, or <see cref="VendorBuyListInvalidArgument"/>, <see cref="VendorBuyListBusy"/>
+    /// or <see cref="VendorBuyListNotReady"/>.
+    /// </summary>
+    [EzIPC]
+    public int VendorBuyListReplaceByName(string listName, (uint ItemId, uint TargetQuantity)[] items)
+    {
+        if (string.IsNullOrWhiteSpace(listName))
+            return VendorBuyListInvalidArgument;
+
+        var manager = GatherBuddy.VendorBuyListManager;
+        if (manager.IsBusy)
+            return VendorBuyListBusy;
+
+        VendorBuyListManager.EnsureVendorCachesAvailable();
+        if (!VendorShopResolver.IsInitialized)
+            return VendorBuyListNotReady;
+
+        var requests = (items ?? [])
+            .Select(item => new VendorBuyListManager.VendorTargetRequest(item.ItemId, item.TargetQuantity))
+            .ToArray();
+        var count = manager.ReplaceTargets(listName, requests);
+        return count < 0 ? VendorBuyListBusy : count;
+    }
 
     /// <summary> Names of all auto-gather lists. </summary>
     [EzIPC]

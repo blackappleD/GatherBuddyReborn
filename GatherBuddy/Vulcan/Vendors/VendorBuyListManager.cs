@@ -589,6 +589,27 @@ public sealed partial class VendorBuyListManager : IDisposable
     public int GetPendingEntryCount(VendorBuyListDefinition? list)
         => list?.Entries.Count(entry => GetRemainingQuantity(entry) > 0) ?? 0;
 
+    /// <summary>
+    /// 按名称（不区分大小写）查找或创建商人列表，并用 <paramref name="requests"/> 替换其全部条目，不切换当前选中的列表。
+    /// 返回成功写入的条目数；运行中返回 -1。
+    /// </summary>
+    public int ReplaceTargets(string listName, IReadOnlyList<VendorTargetRequest> requests)
+    {
+        if (IsBusy)
+            return -1;
+
+        EnsureListState();
+        var name = listName.Trim();
+        var list = GatherBuddy.Config.VendorBuyLists
+                .FirstOrDefault(l => string.Equals(l.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+         ?? CreateList(name, setActive: false);
+
+        list.Entries.Clear();
+        var count = requests.Count == 0 ? 0 : TrySetTargets(list, requests, selectList: false, openWindow: false, announce: false);
+        GatherBuddy.Config.Save();
+        return count;
+    }
+
     private void ResetExecutionState()
     {
         _isRunning = false;
@@ -1397,7 +1418,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         _lastShopCloseBlockerLogTime = DateTime.MinValue;
     }
 
-    private static void EnsureVendorCachesAvailable()
+    internal static void EnsureVendorCachesAvailable()
     {
         VendorShopResolver.InitializeAsync();
         if (!VendorShopResolver.IsInitialized)

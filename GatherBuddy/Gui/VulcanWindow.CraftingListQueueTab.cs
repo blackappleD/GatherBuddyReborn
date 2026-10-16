@@ -51,6 +51,8 @@ public partial class VulcanWindow
         DrawQueueStatusLine(queue);
         ImGui.Spacing();
         DrawQueueAddListCombo(queue);
+        ImGui.SameLine();
+        DrawQueueSkipOptions();
         ImGui.Separator();
         ImGui.Spacing();
 
@@ -133,6 +135,31 @@ public partial class VulcanWindow
         }
 
         ImGui.EndCombo();
+    }
+
+    /// <summary>Queue-only refinements of the lists' "skip if enough (include finals)"; the lists themselves are untouched.</summary>
+    private static void DrawQueueSkipOptions()
+    {
+        const string scopeNote = "\n仅对清单队列生效, 不修改清单本身; 需要清单已勾选 \"持有足够时跳过\" 和 \"包含成品\"。\n在每个清单开始执行时读取。";
+
+        var countRetainers = GatherBuddy.Config.CraftingListQueueCountRetainerFinals;
+        if (ImGui.Checkbox("成品统计雇员背包##queueCountRetainerFinals", ref countRetainers))
+        {
+            GatherBuddy.Config.CraftingListQueueCountRetainerFinals = countRetainers;
+            GatherBuddy.Config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("统计成品持有量时把雇员背包也算进去 (只计数, 不会去取回)。需要 Allagan Tools。" + scopeNote);
+
+        ImGui.SameLine();
+        var finalHQOnly = GatherBuddy.Config.CraftingListQueueFinalHQOnly;
+        if (ImGui.Checkbox("成品 HQ##queueFinalHQOnly", ref finalHQOnly))
+        {
+            GatherBuddy.Config.CraftingListQueueFinalHQOnly = finalHQOnly;
+            GatherBuddy.Config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("统计成品持有量时只计 HQ, NQ 成品不算持有。" + scopeNote);
     }
 
     private void DrawQueueEntryRows(CraftingListQueueManager queue)

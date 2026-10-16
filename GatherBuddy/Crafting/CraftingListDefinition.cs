@@ -39,13 +39,25 @@ public class CraftingListDefinition
     public bool Ephemeral { get; set; } = false;
 
     /// <summary>
-    /// Items produced by earlier entries of the crafting list queue in the current run session.
-    /// Planning treats these inventory items as unavailable so "skip if enough" does not count
-    /// output that another queued list just crafted (e.g. shared accessories). Never persisted;
+    /// Items claimed by earlier entries of the crafting list queue in the current run session: their
+    /// crafted output and the existing final-product stock they counted as "enough". Planning hides
+    /// these from inventory (then retainer) availability so "skip if enough" does not count them
+    /// twice (e.g. shared accessories). Never persisted;
     /// set only on queue-run snapshots by <see cref="CraftingListQueueRunner"/>.
     /// </summary>
     [JsonIgnore]
     public Dictionary<uint, int> QueueReservedInventory { get; set; } = new();
+
+    /// <summary>
+    /// Crafting list queue option: final products held by retainers also count towards
+    /// "skip if enough" (counted only, never withdrawn). Queue-run snapshots only.
+    /// </summary>
+    [JsonIgnore]
+    public bool QueueCountRetainerFinals { get; set; }
+
+    /// <summary>Crafting list queue option: only HQ final products count towards "skip if enough". Queue-run snapshots only.</summary>
+    [JsonIgnore]
+    public bool QueueFinalHQOnly { get; set; }
 
     public bool ShouldApplyQuickSynthAllOverrides(bool isOriginalRecipe)
         => QuickSynthAll && (!QuickSynthAllPrecraftsOnly || !isOriginalRecipe);
@@ -112,6 +124,8 @@ public class CraftingListDefinition
             RetainerRestock = RetainerRestock,
             Ephemeral = Ephemeral,
             QueueReservedInventory = new Dictionary<uint, int>(QueueReservedInventory),
+            QueueCountRetainerFinals = QueueCountRetainerFinals,
+            QueueFinalHQOnly = QueueFinalHQOnly,
         };
 
         foreach (var recipe in Recipes)

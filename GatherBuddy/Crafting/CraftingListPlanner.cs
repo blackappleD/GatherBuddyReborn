@@ -15,6 +15,9 @@ public sealed class CraftingListPlan
     public Dictionary<uint, int> Precrafts { get; } = new();
     public Dictionary<uint, IngredientQualityDemand> IngredientDemands { get; } = new();
     public Dictionary<uint, int> RetainerConsumedCraftables { get; } = new();
+
+    /// <summary>Final products covered by pre-existing stock (inventory or retainers) instead of being crafted.</summary>
+    public Dictionary<uint, int> FinalStockConsumed { get; } = new();
 }
 
 public readonly record struct CraftingListPlannerOptions(
@@ -120,18 +123,27 @@ public static class CraftingListPlanner
 
             if (_list.SkipIfEnough && _list.SkipFinalIfEnough && _consumeFinalAvailability)
             {
-                var consumedInventory = _availability.ConsumeInventory(resultItemId, remainingItemCount);
+                var hqOnly = _list.QueueFinalHQOnly;
+                var consumedInventory = _availability.ConsumeInventory(resultItemId, remainingItemCount, hqOnly);
                 remainingItemCount -= consumedInventory;
                 var consumedRetainers = 0;
+                var countedRetainers = 0;
                 if (_useRetainers)
                 {
-                    consumedRetainers = _availability.ConsumeRetainers(resultItemId, remainingItemCount);
+                    consumedRetainers = _availability.ConsumeRetainers(resultItemId, remainingItemCount, hqOnly);
                     remainingItemCount -= consumedRetainers;
                 }
-
+                else if (_list.QueueCountRetainerFinals)
+                {
+                    // Count only: retainer stock lets the craft be skipped but is never queued for withdrawal.
+                    // Re-plans query retainers live, so the count stays correct across the run.
+                    countedRetainers = _availability.CountRetainers(resultItemId, remainingItemCount, hqOnly);
+                    remainingItemCount -= countedRetainers;
+                }
 
                 if (consumedRetainers > 0)
                     AddCount(_plan.RetainerConsumedCraftables, resultItemId, consumedRetainers);
+                AddCount(_plan.FinalStockConsumed, resultItemId, consumedInventory + consumedRetainers + countedRetainers);
             }
 
             if (remainingItemCount <= 0)
@@ -373,8 +385,8 @@ public static class CraftingListPlanner
             return consumed;
         }
 
-        public int ConsumeInventory(uint itemId, int requested)
-            => ConsumeTotal(_inventoryAvailable, itemId, requested, GetReservedAdjustedInventoryCounts);
+        public int ConsumeInventory(uint itemId, int requested, bool hqOnly = false)
+            => ConsumeTotal(_inventoryAvailable, itemId, requested, GetReservedAdjustedInventoryCounts, hqOnly);
 
         public IngredientQualityDemand ConsumePlanned(uint itemId, IngredientQualityDemand demand)
         {
@@ -407,29 +419,52 @@ public static class CraftingListPlanner
             => ConsumeSplit(_inventoryAvailable, itemId, demand, GetReservedAdjustedInventoryCounts, out nqRequiredFilledFromHQ);
 
         /// <summary>
-        /// Live inventory counts minus the items reserved as earlier queue entries' output.
-        /// Reserved amounts come off the HQ count first, since queue-run lists target HQ results.
+        /// Live inventory counts minus the items reserved by earlier queue entries (their crafted
+        /// output plus the stock they counted as "enough"). Reserved amounts come off the HQ count
+        /// first, since queue-run lists target HQ results.
         /// </summary>
         private (int NQ, int HQ) GetReservedAdjustedInventoryCounts(uint itemId)
-        {
-            var (nq, hq) = GetInventorySplitCounts(itemId);
-            if (!_reservedInventory.TryGetValue(itemId, out var reserved) || reserved <= 0)
-                return (nq, hq);
+            => SubtractReserved(GetInventorySplitCounts(itemId), _reservedInventory.GetValueOrDefault(itemId));
 
-            var fromHQ = Math.Min(hq, reserved);
-            var fromNQ = Math.Min(nq, reserved - fromHQ);
-            return (nq - fromNQ, hq - fromHQ);
+        /// <summary>
+        /// Live retainer counts minus whatever reservation the inventory could not absorb, so stock an
+        /// earlier queue entry counted in a retainer is not counted again by a later entry.
+        /// </summary>
+        private (int NQ, int HQ) GetReservedAdjustedRetainerCounts(uint itemId)
+        {
+            var reserved = _reservedInventory.GetValueOrDefault(itemId);
+            if (reserved > 0)
+            {
+                var (nq, hq) = GetInventorySplitCounts(itemId);
+                reserved = Math.Max(0, reserved - nq - hq);
+            }
+
+            return SubtractReserved(GetRetainerSplitCounts(itemId), reserved);
+        }
+
+        private static (int NQ, int HQ) SubtractReserved((int NQ, int HQ) counts, int reserved)
+        {
+            if (reserved <= 0)
+                return counts;
+
+            var fromHQ = Math.Min(counts.HQ, reserved);
+            var fromNQ = Math.Min(counts.NQ, reserved - fromHQ);
+            return (counts.NQ - fromNQ, counts.HQ - fromHQ);
         }
 
         public IngredientQualityDemand ConsumeRetainers(uint itemId, IngredientQualityDemand demand)
             => _useRetainers
-                ? ConsumeSplit(_retainerAvailable, itemId, demand, GetRetainerSplitCounts)
+                ? ConsumeSplit(_retainerAvailable, itemId, demand, GetReservedAdjustedRetainerCounts)
                 : demand;
 
-        public int ConsumeRetainers(uint itemId, int requested)
+        public int ConsumeRetainers(uint itemId, int requested, bool hqOnly = false)
             => _useRetainers
-                ? ConsumeTotal(_retainerAvailable, itemId, requested, GetRetainerSplitCounts)
+                ? ConsumeTotal(_retainerAvailable, itemId, requested, GetReservedAdjustedRetainerCounts, hqOnly)
                 : 0;
+
+        /// <summary>Consumes retainer stock even without retainer restock planning; the caller never withdraws it.</summary>
+        public int CountRetainers(uint itemId, int requested, bool hqOnly)
+            => ConsumeTotal(_retainerAvailable, itemId, requested, GetReservedAdjustedRetainerCounts, hqOnly);
 
         public void AddPlanned(uint itemId, int amount, PlannedOutputQuality outputQuality = PlannedOutputQuality.Unknown)
         {
@@ -454,7 +489,8 @@ public static class CraftingListPlanner
             Dictionary<uint, (int NQ, int HQ)> ledger,
             uint itemId,
             int requested,
-            Func<uint, (int NQ, int HQ)> valueFactory)
+            Func<uint, (int NQ, int HQ)> valueFactory,
+            bool hqOnly = false)
         {
             if (requested <= 0)
                 return 0;
@@ -465,12 +501,13 @@ public static class CraftingListPlanner
                 ledger[itemId] = available;
             }
 
-            var totalAvailable = available.NQ + available.HQ;
+            var usableNQ = hqOnly ? 0 : available.NQ;
+            var totalAvailable = usableNQ + available.HQ;
             if (totalAvailable <= 0)
                 return 0;
 
             var consumed = Math.Min(requested, totalAvailable);
-            var consumeNQ = Math.Min(consumed, available.NQ);
+            var consumeNQ = Math.Min(consumed, usableNQ);
             var consumeHQ = consumed - consumeNQ;
             ledger[itemId] = (Math.Max(0, available.NQ - consumeNQ), Math.Max(0, available.HQ - consumeHQ));
             return consumed;

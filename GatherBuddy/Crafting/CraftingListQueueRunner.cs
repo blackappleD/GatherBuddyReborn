@@ -13,9 +13,10 @@ namespace GatherBuddy.Crafting;
 /// An entry's quantity is applied by multiplying every recipe quantity in a snapshot of the list
 /// and running that once, NOT by running the list multiple times: with "skip if enough" enabled,
 /// a second run would see the first run's output in the inventory and skip everything.
-/// For the same reason, the outputs each entry is planned to craft are accumulated in
-/// <see cref="_reservedOutputs"/> and hidden from later entries' inventory availability, so two
-/// queued lists sharing an item (e.g. the same accessories) each craft their own copy.
+/// For the same reason, the outputs each entry is planned to craft, and the existing final-product
+/// stock it counted as "enough", are accumulated in <see cref="_reservedOutputs"/> and hidden from
+/// later entries' inventory/retainer availability, so two queued lists sharing an item (e.g. the
+/// same accessories) neither reuse each other's output nor both claim the same stock.
 /// </summary>
 public static class CraftingListQueueRunner
 {
@@ -143,14 +144,17 @@ public static class CraftingListQueueRunner
     }
 
     /// <summary>
-    /// Snapshot of the list carrying the queue-session inventory reservations, with every recipe
-    /// quantity multiplied by the entry quantity. Always a snapshot so the persisted list is
-    /// never mutated (the reservations must not leak into manual runs of the same list).
+    /// Snapshot of the list carrying the queue-session inventory reservations and the queue's
+    /// final-product counting options, with every recipe quantity multiplied by the entry quantity.
+    /// Always a snapshot so the persisted list is never mutated (none of this may leak into
+    /// manual runs of the same list).
     /// </summary>
     private static CraftingListDefinition BuildRunList(CraftingListDefinition list, int quantity)
     {
         var snapshot = list.CreateRetainerPlanningSnapshot();
-        snapshot.QueueReservedInventory = new Dictionary<uint, int>(_reservedOutputs);
+        snapshot.QueueReservedInventory   = new Dictionary<uint, int>(_reservedOutputs);
+        snapshot.QueueCountRetainerFinals = GatherBuddy.Config.CraftingListQueueCountRetainerFinals;
+        snapshot.QueueFinalHQOnly         = GatherBuddy.Config.CraftingListQueueFinalHQOnly;
         if (quantity <= 1)
             return snapshot;
 
@@ -161,8 +165,9 @@ public static class CraftingListQueueRunner
     }
 
     /// <summary>
-    /// Records what the run that just started is planned to craft, so later entries treat those
-    /// inventory items as unavailable instead of counting them as pre-existing stock.
+    /// Records what the run that just started is planned to craft, plus the existing final-product
+    /// stock it counted as "enough", so later entries treat those items as unavailable instead of
+    /// counting them (again) as pre-existing stock.
     /// </summary>
     private static void ReservePlannedOutputs()
     {
@@ -181,7 +186,13 @@ public static class CraftingListQueueRunner
             if (produced <= 0)
                 continue;
 
-            _reservedOutputs[resultItemId] = _reservedOutputs.GetValueOrDefault(resultItemId) + produced;
+            Reserve(resultItemId, produced);
         }
+
+        foreach (var (itemId, amount) in plan.ResolvedPlan.FinalStockConsumed)
+            Reserve(itemId, amount);
     }
+
+    private static void Reserve(uint itemId, int amount)
+        => _reservedOutputs[itemId] = _reservedOutputs.GetValueOrDefault(itemId) + amount;
 }

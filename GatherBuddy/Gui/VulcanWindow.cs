@@ -446,6 +446,7 @@ public partial class VulcanWindow : Window, IDisposable
 
     private void TryToggleArtisan(bool enable)
     {
+        ArtisanSuspension.Forget();
         if (!DalamudPluginToggleHelper.TrySetPluginEnabled(ArtisanPluginName, enable, out var toggleTask, out var failureReason))
         {
             GatherBuddy.Log.Warning($"[VulcanWindow] 失败: 调用反射的 Artisan 切换以设置状态 {(enable ? "已启用" : "已禁用")}: {failureReason ?? "未知原因"}。");

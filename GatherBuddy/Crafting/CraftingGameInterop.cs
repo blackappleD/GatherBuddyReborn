@@ -263,6 +263,7 @@ public static class CraftingGameInterop
         if (tm == null)
             return;
         
+        tm.Enqueue(() => ArtisanSuspension.EnsureSuspended(), 20000, false, "SuspendArtisan");
         tm.Enqueue(() => OpenRecipe(recipe.RowId), 3000, "OpenRecipe");
         tm.Enqueue(() => WaitForRecipeOpen(), 3000, true, "WaitForRecipeOpen");
         

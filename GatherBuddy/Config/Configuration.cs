@@ -90,6 +90,7 @@ public partial class Configuration : IPluginConfiguration
     public List<CraftingListQueueEntry> CraftingListQueue { get; set; } = [];
     public bool CraftingListQueueCountRetainerFinals { get; set; } = false;
     public bool CraftingListQueueFinalHQOnly { get; set; } = false;
+    public bool ArtisanSuspendedByVulcan { get; set; } = false;
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
     public bool CraftingCompletionSound { get; set; } = true;
     public int CraftingSoundPlaybackVolume { get; set; } = 100;

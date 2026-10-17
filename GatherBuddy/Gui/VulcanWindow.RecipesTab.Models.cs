@@ -383,6 +383,7 @@ public partial class VulcanWindow
 
                 if (selected)
                 {
+                    ArtisanSuspension.BeginSingleCraft();
                     SwitchJobIfNeeded(item.JobId);
                     StartCraftWithRaphael(item.Recipe);
                 }

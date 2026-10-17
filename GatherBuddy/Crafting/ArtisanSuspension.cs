@@ -16,13 +16,22 @@ public static class ArtisanSuspension
 {
     private const string ArtisanPluginName = "Artisan";
 
-    /// <summary>How long Vulcan must stay idle before Artisan is loaded again, so it is not toggled between queue entries.</summary>
-    private static readonly TimeSpan RestoreIdleDelay = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// Debounce only: whether Vulcan is done is decided by <see cref="IsVulcanIdle"/>. This just rides out the
+    /// game's crafting condition flags flickering for a moment when a craft ends.
+    /// </summary>
+    private static readonly TimeSpan RestoreIdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan UnloadTimeout = TimeSpan.FromSeconds(15);
 
     private static Task? _unloadTask = null;
     private static DateTime _unloadRequestedAt = DateTime.MinValue;
     private static DateTime _idleSince = DateTime.MinValue;
+
+    /// <summary>
+    /// A single craft from the recipe tab runs job switch, consumables and the Raphael wait as task-manager steps
+    /// before <see cref="CraftingGameInterop.StartCraft"/>, outside any queue, so it is tracked here.
+    /// </summary>
+    private static bool _singleCraftInFlight = false;
 
     private static bool SuspendedByVulcan
     {
@@ -70,6 +79,17 @@ public static class ArtisanSuspension
         return false;
     }
 
+    /// <summary>
+    /// Called at the very start of a recipe-tab single craft, before the job switch: marks the flow as running
+    /// and starts unloading Artisan right away. The SuspendArtisan step in StartCraft still waits for the unload.
+    /// </summary>
+    public static void BeginSingleCraft()
+    {
+        _singleCraftInFlight = true;
+        _idleSince = DateTime.MinValue;
+        EnsureSuspended();
+    }
+
     /// <summary>The user toggled Artisan by hand, so it is theirs again and is not loaded back automatically.</summary>
     public static void Forget()
     {
@@ -79,8 +99,24 @@ public static class ArtisanSuspension
 
     public static void Update()
     {
-        if (!SuspendedByVulcan || _unloadTask != null)
+        // The single-craft flow is over once nothing of it is queued any more and no craft is in progress:
+        // that covers a finished craft, a cancel, a preparation failure (state is forced back to IdleNormal)
+        // and a stop (the task manager is cleared).
+        if (_singleCraftInFlight
+         && GatherBuddy.AutoGather?.TaskManager.IsBusy != true
+         && CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleNormal)
+            _singleCraftInFlight = false;
+
+        if (!SuspendedByVulcan)
             return;
+
+        // Normally the SuspendArtisan step clears this, but a stop can drop that step before it runs again.
+        if (_unloadTask != null)
+        {
+            if (!_unloadTask.IsCompleted && DateTime.UtcNow - _unloadRequestedAt <= UnloadTimeout)
+                return;
+            _unloadTask = null;
+        }
 
         if (!IsVulcanIdle())
         {
@@ -128,7 +164,8 @@ public static class ArtisanSuspension
     }
 
     private static bool IsVulcanIdle()
-        => !CraftingGatherBridge.IsQueueRunning
+        => !_singleCraftInFlight
+         && !CraftingGatherBridge.IsQueueRunning
          && !CraftingListQueueRunner.Running
          && CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleNormal
          && !Dalamud.Conditions[ConditionFlag.Crafting]

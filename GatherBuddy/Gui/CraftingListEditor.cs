@@ -36,6 +36,7 @@ public class CraftingListEditor
         public Dictionary<uint, IngredientQualityDemand> CraftMaterialDemands { get; init; } = [];
         public Dictionary<uint, int> DisplayMaterials { get; init; } = [];
         public Dictionary<uint, int> DisplayPrecraftMaterials { get; init; } = [];
+        public Dictionary<uint, int> DisplayFinalMaterials { get; init; } = [];
         public Dictionary<uint, IngredientQualityDemand> DisplayIngredientDemands { get; init; } = [];
         public Dictionary<uint, IngredientQualityDemand> DisplayCraftMaterialDemands { get; init; } = [];
     }
@@ -1805,6 +1806,10 @@ public class CraftingListEditor
         var precraftMaterials = BuildCraftPanelMaterials(plan);
         var displayPlan = BuildDisplayMaterialPlan(planningList);
         var displayPrecraftMaterials = BuildCraftPanelMaterials(displayPlan, planningList.Recipes);
+        var displayFinalMaterials = BuildFinalProductMaterials(planningList.Recipes);
+        var displayCraftDemandKeys = new Dictionary<uint, int>(displayPrecraftMaterials);
+        foreach (var (itemId, quantity) in displayFinalMaterials)
+            displayCraftDemandKeys.TryAdd(itemId, quantity);
         return new MaterialCacheSnapshot
         {
             Hash = hash,
@@ -1814,8 +1819,9 @@ public class CraftingListEditor
             CraftMaterialDemands = BuildCraftPanelDemands(plan, precraftMaterials),
             DisplayMaterials = new Dictionary<uint, int>(displayPlan.Materials),
             DisplayPrecraftMaterials = displayPrecraftMaterials,
+            DisplayFinalMaterials = displayFinalMaterials,
             DisplayIngredientDemands = new Dictionary<uint, IngredientQualityDemand>(displayPlan.IngredientDemands),
-            DisplayCraftMaterialDemands = BuildCraftPanelDemands(displayPlan, displayPrecraftMaterials, planningList.Recipes),
+            DisplayCraftMaterialDemands = BuildCraftPanelDemands(displayPlan, displayCraftDemandKeys, planningList.Recipes),
         };
     }
 
@@ -1881,6 +1887,27 @@ public class CraftingListEditor
         }
 
         return craftPanelMaterials;
+    }
+
+    private static Dictionary<uint, int> BuildFinalProductMaterials(IEnumerable<CraftingListItem> recipes)
+    {
+        var finalMaterials = new Dictionary<uint, int>();
+        foreach (var originalRecipe in recipes)
+        {
+            if (originalRecipe.Options.Skipping || originalRecipe.Quantity <= 0)
+                continue;
+            var recipe = RecipeManager.GetRecipe(originalRecipe.RecipeId);
+            if (recipe == null)
+                continue;
+
+            var resultItemId = recipe.Value.ItemResult.RowId;
+            var finalItemCount = originalRecipe.Quantity * (int)recipe.Value.AmountResult;
+            finalMaterials[resultItemId] = finalMaterials.TryGetValue(resultItemId, out var existingCount)
+                ? existingCount + finalItemCount
+                : finalItemCount;
+        }
+
+        return finalMaterials;
     }
 
     private static bool IsEquippableCraftPanelItem(Item item)
@@ -2086,6 +2113,13 @@ public class CraftingListEditor
         ProcessPendingInventoryChanges();
         var materialCache = EnsureMaterialCache(ComputeListHash());
         return materialCache.DisplayPrecraftMaterials;
+    }
+
+    internal Dictionary<uint, int> GetDisplayFinalMaterials()
+    {
+        ProcessPendingInventoryChanges();
+        var materialCache = EnsureMaterialCache(ComputeListHash());
+        return materialCache.DisplayFinalMaterials;
     }
 
     internal IReadOnlyDictionary<uint, IngredientQualityDemand> GetCachedIngredientDemands()

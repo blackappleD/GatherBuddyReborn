@@ -26,6 +26,7 @@ public class CraftingMaterialsWindow : Window
     private CraftingListEditor? _editor;
     private bool _matsOvercapPercent;
     private bool _matsShowPrecrafts;
+    private bool _matsShowFinals;
     private bool _matsPreferVendors;
     private bool _matsKeepFulfilled;
 
@@ -82,6 +83,7 @@ public class CraftingMaterialsWindow : Window
     private CraftingListEditor? _cachedMaterialViewEditor;
     private long _cachedMaterialViewVersion = -1;
     private bool _cachedMaterialViewShowPrecrafts;
+    private bool _cachedMaterialViewShowFinals;
     private bool _cachedMaterialViewPreferVendors;
     private bool _cachedMaterialViewKeepFulfilled;
     private bool _cachedMaterialViewShowRetainer;
@@ -162,6 +164,7 @@ public class CraftingMaterialsWindow : Window
 
         var overcapCheckboxWidth = GetCheckboxWidth("150%");
         var precraftsCheckboxWidth = GetCheckboxWidth("半成品");
+        var finalsCheckboxWidth = GetCheckboxWidth("成品");
         var preferVendorsCheckboxWidth = GetCheckboxWidth("优先商店");
         var keepFulfilledCheckboxWidth = GetCheckboxWidth("保留已满足");
         var refreshRetainersButtonWidth = GetSmallButtonWidth("刷新雇员");
@@ -175,6 +178,13 @@ public class CraftingMaterialsWindow : Window
         ImGui.Checkbox("半成品##precrafts", ref _matsShowPrecrafts);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("在清单中包含可制作的半成品和非装备成品");
+        SameLineIfFits(finalsCheckboxWidth);
+        ImGui.Checkbox("成品##finals", ref _matsShowFinals);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "在清单中包含要制作的成品 (含装备)\n" +
+                "可在金币商店购买的成品归入 \"商店\", 可直接加入购买清单\n" +
+                "其余成品归入 \"制作\"");
         SameLineIfFits(preferVendorsCheckboxWidth);
         ImGui.Checkbox("优先商店##preferVendors", ref _matsPreferVendors);
         if (ImGui.IsItemHovered())
@@ -246,6 +256,7 @@ public class CraftingMaterialsWindow : Window
         if (_cachedMaterialViewVersion != _editor.MaterialCacheVersion)
             return true;
         if (_cachedMaterialViewShowPrecrafts != _matsShowPrecrafts
+         || _cachedMaterialViewShowFinals != _matsShowFinals
          || _cachedMaterialViewPreferVendors != _matsPreferVendors
          || _cachedMaterialViewKeepFulfilled != _matsKeepFulfilled
          || _cachedMaterialViewShowRetainer != showRetainer)
@@ -285,9 +296,20 @@ public class CraftingMaterialsWindow : Window
 
             var countRetainersTowardNeed = showRetainer && _editor.RetainerRestockEnabled;
             var hideSatisfiedRows = _editor.SkipIfEnoughEnabled && !_matsKeepFulfilled;
+            var finalMaterials = _matsShowFinals
+                ? _editor.GetDisplayFinalMaterials()
+                : null;
             var craftMaterials = _matsShowPrecrafts
                 ? _editor.GetDisplayPrecraftMaterials()
                 : null;
+            if (finalMaterials != null)
+            {
+                craftMaterials = craftMaterials != null
+                    ? new Dictionary<uint, int>(craftMaterials)
+                    : new Dictionary<uint, int>();
+                foreach (var (itemId, needed) in finalMaterials)
+                    craftMaterials.TryAdd(itemId, needed);
+            }
             var snapshotItemIds = materials.Keys.Concat(craftMaterials != null ? craftMaterials.Keys : Enumerable.Empty<uint>());
             var retainerSnapshot = showRetainer
                 ? _editor.GetRetainerSnapshot(snapshotItemIds)
@@ -297,7 +319,7 @@ public class CraftingMaterialsWindow : Window
             var dropList = new List<MaterialEntry>();
             var shopList = new List<MaterialEntry>();
             var vendorList = new List<MaterialEntry>();
-            List<MaterialEntry>? craftList = _matsShowPrecrafts ? [] : null;
+            List<MaterialEntry>? craftList = craftMaterials != null ? [] : null;
 
             void AddEntry(MaterialEntry entry)
             {
@@ -310,7 +332,9 @@ public class CraftingMaterialsWindow : Window
                     return;
 
                 _cachedHasVisibleEntries = true;
-                switch (MaterialSourceClassifier.Classify(entry.ItemId, _matsPreferVendors))
+                // 显示成品是为了直接买, 所以成品总是优先金币商店
+                var preferVendors = _matsPreferVendors || finalMaterials?.ContainsKey(entry.ItemId) == true;
+                switch (MaterialSourceClassifier.Classify(entry.ItemId, preferVendors))
                 {
                     case MaterialSource.Gatherable:
                     case MaterialSource.Fish:
@@ -378,6 +402,7 @@ public class CraftingMaterialsWindow : Window
         _cachedMaterialViewEditor = _editor;
         _cachedMaterialViewVersion = _editor?.MaterialCacheVersion ?? -1;
         _cachedMaterialViewShowPrecrafts = _matsShowPrecrafts;
+        _cachedMaterialViewShowFinals = _matsShowFinals;
         _cachedMaterialViewPreferVendors = _matsPreferVendors;
         _cachedMaterialViewKeepFulfilled = _matsKeepFulfilled;
         _cachedMaterialViewShowRetainer = showRetainer;

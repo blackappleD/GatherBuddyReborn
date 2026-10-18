@@ -16,6 +16,11 @@ using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
+using AtkStage = FFXIVClientStructs.FFXIV.Component.GUI.AtkStage;
+using AtkTooltipManager = FFXIVClientStructs.FFXIV.Component.GUI.AtkTooltipManager;
+using AtkTooltipType = FFXIVClientStructs.FFXIV.Component.GUI.AtkTooltipType;
+using AtkUnitBase = FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase;
+using DetailKind = FFXIVClientStructs.FFXIV.Client.Enums.DetailKind;
 
 namespace GatherBuddy.Gui;
 
@@ -29,8 +34,8 @@ public class CraftingMaterialsWindow : Window
     private bool _matsShowFinals;
     private bool _matsPreferVendors;
     private bool _matsKeepFulfilled;
-    private Vector2 _tooltipWindowMin;
-    private Vector2 _tooltipWindowMax;
+    private uint _hoveredTooltipItemId;
+    private bool _itemTooltipShown;
 
     private static readonly Vector4 AccentGather = new(0.45f, 1.00f, 0.45f, 1f);
     private static readonly Vector4 AccentDrop   = new(1.00f, 0.45f, 0.45f, 1f);
@@ -116,6 +121,47 @@ public class CraftingMaterialsWindow : Window
             WindowName = $"Materials \u2014 {_editor.ListName}###CraftingMaterials";
     }
 
+    // Runs before Draw each frame, so it acts on the row hovered last frame. When the window is
+    // collapsed Draw is skipped, the hovered id stays 0 and the tooltip is hidden.
+    public override void Update()
+    {
+        if (GatherBuddy.Config.ShowCraftingMaterialsTooltips && _hoveredTooltipItemId != 0)
+            ShowItemTooltip(_hoveredTooltipItemId);
+        else
+            HideItemTooltip();
+        _hoveredTooltipItemId = 0;
+    }
+
+    public override void OnClose()
+        => HideItemTooltip();
+
+    // Same approach as ReMakePlace: attach the game's ItemDetail tooltip to _ScreenText every frame
+    // while a row is hovered. Other plugins (e.g. market data) append to that native tooltip.
+    private unsafe void ShowItemTooltip(uint itemId)
+    {
+        var screenText = (AtkUnitBase*)Dalamud.GameGui.GetAddonByName("_ScreenText").Address;
+        if (screenText == null)
+            return;
+
+        var args = stackalloc AtkTooltipManager.AtkTooltipArgs[1];
+        args->Ctor();
+        args->ItemArgs.Kind   = DetailKind.ItemId;
+        args->ItemArgs.ItemId = (int)itemId;
+        AtkStage.Instance()->TooltipManager.ShowTooltip(AtkTooltipType.Item, screenText->Id, screenText->RootNode, args);
+        _itemTooltipShown = true;
+    }
+
+    private unsafe void HideItemTooltip()
+    {
+        if (!_itemTooltipShown)
+            return;
+
+        _itemTooltipShown = false;
+        var screenText = (AtkUnitBase*)Dalamud.GameGui.GetAddonByName("_ScreenText").Address;
+        if (screenText != null)
+            AtkStage.Instance()->TooltipManager.HideTooltip(screenText->Id);
+    }
+
     public override void Draw()
     {
         static float GetCheckboxWidth(string label)
@@ -136,8 +182,6 @@ public class CraftingMaterialsWindow : Window
             if (GetRemainingLineWidth() >= style.ItemSpacing.X + nextItemWidth)
                 ImGui.SameLine();
         }
-        _tooltipWindowMin = ImGui.GetWindowPos();
-        _tooltipWindowMax = _tooltipWindowMin + ImGui.GetWindowSize();
         if (_editor == null)
         {
             ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "未打开清单");
@@ -667,9 +711,7 @@ public class CraftingMaterialsWindow : Window
         if (ImGui.IsItemHovered())
         {
             ImGui.SetTooltip("点击复制到剪贴板");
-            if (GatherBuddy.Config.ShowCraftingMaterialsTooltips
-             && TryGetItemTooltipAnchor(ImGui.GetItemRectMin().Y, ImGui.GetItemRectMax().Y, out var tooltipAnchorMin, out var tooltipAnchorMax, out var tooltipExpandRight))
-                GatherBuddy.NativeItemTooltipBridge?.RequestItemTooltip(itemId, tooltipAnchorMin, tooltipAnchorMax, tooltipExpandRight);
+            _hoveredTooltipItemId = itemId;
         }
         if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}_{(isPrecraft ? 1 : 0)}_{(int)retainerColumnMode}"))
         {
@@ -782,39 +824,6 @@ public class CraftingMaterialsWindow : Window
                 barMin.Y + (barMax.Y - barMin.Y - pctSize.Y) * 0.5f),
             ImGui.GetColorU32(ImGuiCol.Text),
             pctText);
-    }
-
-    // Anchors the native item tooltip just outside whichever side of this window has more room,
-    // aligned with the hovered row, so it never covers the material list.
-    private bool TryGetItemTooltipAnchor(float rowTop, float rowBottom, out Vector2 anchorMin, out Vector2 anchorMax, out bool expandRight)
-    {
-        anchorMin   = default;
-        anchorMax   = default;
-        expandRight = false;
-        if (_tooltipWindowMax.X <= _tooltipWindowMin.X || _tooltipWindowMax.Y <= _tooltipWindowMin.Y)
-            return false;
-
-        var displaySize = ImGui.GetIO().DisplaySize;
-        if (displaySize.X <= 0f || displaySize.Y <= 0f)
-            return false;
-
-        var screenPadding = MathF.Round(VulcanUiScaling.Scaled(4f));
-        var anchorWidth   = Math.Max(1f, MathF.Round(VulcanUiScaling.Scaled(2f)));
-        var spaceLeft     = _tooltipWindowMin.X - screenPadding;
-        var spaceRight    = displaySize.X - _tooltipWindowMax.X - screenPadding;
-        var anchorOnRight = spaceRight >= spaceLeft;
-        var anchorTop     = MathF.Round(Math.Max(screenPadding, rowTop));
-        var anchorBottom  = MathF.Round(Math.Min(displaySize.Y - screenPadding, rowBottom));
-        if (anchorBottom <= anchorTop)
-            return false;
-
-        var anchorX = anchorOnRight
-            ? MathF.Round(Math.Min(displaySize.X - screenPadding - anchorWidth, _tooltipWindowMax.X))
-            : MathF.Round(Math.Max(screenPadding, _tooltipWindowMin.X - anchorWidth));
-        anchorMin   = new Vector2(anchorX, anchorTop);
-        anchorMax   = new Vector2(anchorX + anchorWidth, anchorBottom);
-        expandRight = anchorOnRight;
-        return true;
     }
 
     private void DrawVendorBuyListPopup(MaterialEntry entry, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)

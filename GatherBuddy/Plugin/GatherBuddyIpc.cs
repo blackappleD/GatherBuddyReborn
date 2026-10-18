@@ -12,7 +12,7 @@ namespace GatherBuddy.Plugin;
 
 public sealed class GatherBuddyIpc : IDisposable
 {
-    public const int IpcVersion = 7;
+    public const int IpcVersion = 8;
 
     /// <summary> Returned by <see cref="VendorBuyListStart"/> when no list matches the requested name. </summary>
     public const int VendorBuyListNotFound = -1;
@@ -177,6 +177,18 @@ public sealed class GatherBuddyIpc : IDisposable
     /// </summary>
     [EzIPC]
     public (int Written, uint[] Uncraftable) CraftingListReplaceByName(string listName, (uint ItemId, uint Quantity)[] items)
+        => ReplaceCraftingList(listName, items, false);
+
+    /// <summary>
+    /// Same as <see cref="CraftingListReplaceByName"/>, but sets the list up for NQ crafting: all precrafts use quick synthesis
+    /// with NQ materials, and final products (except expert recipes) use quick synthesis or the progress-only solver with NQ
+    /// materials. Expert recipe finals keep the default quality handling.
+    /// </summary>
+    [EzIPC]
+    public (int Written, uint[] Uncraftable) CraftingListReplaceByNameNQ(string listName, (uint ItemId, uint Quantity)[] items)
+        => ReplaceCraftingList(listName, items, true);
+
+    private static (int Written, uint[] Uncraftable) ReplaceCraftingList(string listName, (uint ItemId, uint Quantity)[] items, bool nq)
     {
         if (string.IsNullOrWhiteSpace(listName))
             return (CraftingListInvalidArgument, []);
@@ -203,7 +215,18 @@ public sealed class GatherBuddyIpc : IDisposable
 
             var amountResult = Math.Max(1, (long)recipe.Value.AmountResult);
             var crafts       = (int)Math.Min(int.MaxValue, (count + amountResult - 1) / amountResult);
-            recipes.Add(new CraftingListItem(recipe.Value.RowId, crafts));
+            var listItem = new CraftingListItem(recipe.Value.RowId, crafts);
+            if (nq && !recipe.Value.IsExpert)
+            {
+                listItem.Options.NQOnly = true;
+                listItem.CraftSettings = new RecipeCraftSettings
+                {
+                    UseAllNQ       = true,
+                    SolverOverride = SolverOverrideMode.ProgressOnlySolver,
+                };
+            }
+
+            recipes.Add(listItem);
         }
 
         var manager = GatherBuddy.CraftingListManager;
@@ -218,6 +241,14 @@ public sealed class GatherBuddyIpc : IDisposable
         }
 
         list.Recipes = recipes;
+        if (nq)
+        {
+            list.QuickSynthAll              = true;
+            list.QuickSynthAllPreferNQ      = true;
+            list.QuickSynthAllPrecraftsOnly = true;
+            list.UseAllHQ                   = false;
+        }
+
         manager.SaveList(list);
         return (list.Recipes.Count, uncraftable.ToArray());
     }

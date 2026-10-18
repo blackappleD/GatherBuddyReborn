@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Crafting;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Vulcan.Vendors;
 
@@ -11,7 +12,7 @@ namespace GatherBuddy.Plugin;
 
 public sealed class GatherBuddyIpc : IDisposable
 {
-    public const int IpcVersion = 6;
+    public const int IpcVersion = 7;
 
     /// <summary> Returned by <see cref="VendorBuyListStart"/> when no list matches the requested name. </summary>
     public const int VendorBuyListNotFound = -1;
@@ -30,6 +31,12 @@ public sealed class GatherBuddyIpc : IDisposable
 
     /// <summary> Returned by <see cref="AutoGatherListSet"/> when the name or the item string is invalid. </summary>
     public const int AutoGatherListInvalidArgument = -2;
+
+    /// <summary> Returned by <see cref="CraftingListReplaceByName"/> when the list name is empty. </summary>
+    public const int CraftingListInvalidArgument = -2;
+
+    /// <summary> Returned by <see cref="CraftingListReplaceByName"/> while the crafting list queue is running; nothing is changed. </summary>
+    public const int CraftingListBusy = -3;
 
     private readonly GatherBuddy _plugin;
 
@@ -155,6 +162,64 @@ public sealed class GatherBuddyIpc : IDisposable
             .ToArray();
         var count = manager.ReplaceTargets(listName, requests);
         return count < 0 ? VendorBuyListBusy : count;
+    }
+
+    /// <summary> Names of all crafting lists. </summary>
+    [EzIPC]
+    public string[] CraftingListNames()
+        => GatherBuddy.CraftingListManager.Lists.Select(list => list.Name).ToArray();
+
+    /// <summary>
+    /// Creates the crafting list with the given name, or replaces all recipes of an existing one (case-insensitive match).
+    /// <paramref name="items"/> holds the wanted item counts (repeated items are summed); they are converted to crafts using
+    /// the recipe yield. Items without a recipe are skipped and returned in Uncraftable; no list is created when nothing is craftable.
+    /// Written is the number of recipes in the list, or <see cref="CraftingListInvalidArgument"/> / <see cref="CraftingListBusy"/>.
+    /// </summary>
+    [EzIPC]
+    public (int Written, uint[] Uncraftable) CraftingListReplaceByName(string listName, (uint ItemId, uint Quantity)[] items)
+    {
+        if (string.IsNullOrWhiteSpace(listName))
+            return (CraftingListInvalidArgument, []);
+        if (CraftingListQueueRunner.Running)
+            return (CraftingListBusy, []);
+
+        var itemCounts = new Dictionary<uint, long>();
+        foreach (var (itemId, quantity) in items ?? [])
+        {
+            if (itemId != 0 && quantity != 0)
+                itemCounts[itemId] = itemCounts.GetValueOrDefault(itemId) + quantity;
+        }
+
+        var recipes     = new List<CraftingListItem>();
+        var uncraftable = new List<uint>();
+        foreach (var (itemId, count) in itemCounts)
+        {
+            var recipe = RecipeManager.GetRecipeForItem(itemId);
+            if (!recipe.HasValue)
+            {
+                uncraftable.Add(itemId);
+                continue;
+            }
+
+            var amountResult = Math.Max(1, (long)recipe.Value.AmountResult);
+            var crafts       = (int)Math.Min(int.MaxValue, (count + amountResult - 1) / amountResult);
+            recipes.Add(new CraftingListItem(recipe.Value.RowId, crafts));
+        }
+
+        var manager = GatherBuddy.CraftingListManager;
+        var name    = listName.Trim();
+        var list    = manager.GetListByName(name);
+        if (list == null)
+        {
+            if (recipes.Count == 0)
+                return (0, uncraftable.ToArray());
+
+            list = manager.CreateNewList(name);
+        }
+
+        list.Recipes = recipes;
+        manager.SaveList(list);
+        return (list.Recipes.Count, uncraftable.ToArray());
     }
 
     /// <summary> Names of all auto-gather lists. </summary>

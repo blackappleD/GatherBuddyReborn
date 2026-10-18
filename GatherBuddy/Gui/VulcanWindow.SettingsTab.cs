@@ -141,6 +141,15 @@ public partial class VulcanWindow
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("在配方选项卡中悬停配方结果时显示物品原生提示");
 
+            var showCraftingMaterialsTooltips = GatherBuddy.Config.ShowCraftingMaterialsTooltips;
+            if (ImGui.Checkbox("显示材料清单物品提示", ref showCraftingMaterialsTooltips))
+            {
+                GatherBuddy.Config.ShowCraftingMaterialsTooltips = showCraftingMaterialsTooltips;
+                GatherBuddy.Config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("在材料清单窗口中悬停材料名称时显示物品原生提示");
+
             if (Widget.ModifiableKeySelector("打开配方选项卡快捷键",
                     "设置快捷键直接打开 Vulcan 的配方选项卡",
                     VulcanUiScaling.Scaled(220f),

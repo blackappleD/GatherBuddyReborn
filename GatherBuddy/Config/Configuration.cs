@@ -84,6 +84,7 @@ public partial class Configuration : IPluginConfiguration
     public int VulcanExecutionDelayMs { get; set; } = 300;
     public bool VulcanContextMenuEntries { get; set; } = true;
     public bool ShowRecipeBrowserTooltips { get; set; } = true;
+    public bool ShowCraftingMaterialsTooltips { get; set; } = true;
     public ModifiableHotkey VulcanRecipesTabHotkey { get; set; } = new();
     public string CraftingLists { get; set; } = string.Empty;
     public List<string> CraftingFolders { get; set; } = [];

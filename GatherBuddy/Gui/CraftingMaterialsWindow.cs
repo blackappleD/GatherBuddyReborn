@@ -29,6 +29,8 @@ public class CraftingMaterialsWindow : Window
     private bool _matsShowFinals;
     private bool _matsPreferVendors;
     private bool _matsKeepFulfilled;
+    private Vector2 _tooltipWindowMin;
+    private Vector2 _tooltipWindowMax;
 
     private static readonly Vector4 AccentGather = new(0.45f, 1.00f, 0.45f, 1f);
     private static readonly Vector4 AccentDrop   = new(1.00f, 0.45f, 0.45f, 1f);
@@ -134,6 +136,8 @@ public class CraftingMaterialsWindow : Window
             if (GetRemainingLineWidth() >= style.ItemSpacing.X + nextItemWidth)
                 ImGui.SameLine();
         }
+        _tooltipWindowMin = ImGui.GetWindowPos();
+        _tooltipWindowMax = _tooltipWindowMin + ImGui.GetWindowSize();
         if (_editor == null)
         {
             ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "未打开清单");
@@ -661,7 +665,12 @@ public class CraftingMaterialsWindow : Window
             try { ImGui.SetClipboardText(name); } catch { /* ignored */ }
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("点击复制到剪贴板");
+            if (GatherBuddy.Config.ShowCraftingMaterialsTooltips
+             && TryGetItemTooltipAnchor(ImGui.GetItemRectMin().Y, ImGui.GetItemRectMax().Y, out var tooltipAnchorMin, out var tooltipAnchorMax, out var tooltipExpandRight))
+                GatherBuddy.NativeItemTooltipBridge?.RequestItemTooltip(itemId, tooltipAnchorMin, tooltipAnchorMax, tooltipExpandRight);
+        }
         if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}_{(isPrecraft ? 1 : 0)}_{(int)retainerColumnMode}"))
         {
             if (ImGui.Selectable("创建链接"))
@@ -773,6 +782,39 @@ public class CraftingMaterialsWindow : Window
                 barMin.Y + (barMax.Y - barMin.Y - pctSize.Y) * 0.5f),
             ImGui.GetColorU32(ImGuiCol.Text),
             pctText);
+    }
+
+    // Anchors the native item tooltip just outside whichever side of this window has more room,
+    // aligned with the hovered row, so it never covers the material list.
+    private bool TryGetItemTooltipAnchor(float rowTop, float rowBottom, out Vector2 anchorMin, out Vector2 anchorMax, out bool expandRight)
+    {
+        anchorMin   = default;
+        anchorMax   = default;
+        expandRight = false;
+        if (_tooltipWindowMax.X <= _tooltipWindowMin.X || _tooltipWindowMax.Y <= _tooltipWindowMin.Y)
+            return false;
+
+        var displaySize = ImGui.GetIO().DisplaySize;
+        if (displaySize.X <= 0f || displaySize.Y <= 0f)
+            return false;
+
+        var screenPadding = MathF.Round(VulcanUiScaling.Scaled(4f));
+        var anchorWidth   = Math.Max(1f, MathF.Round(VulcanUiScaling.Scaled(2f)));
+        var spaceLeft     = _tooltipWindowMin.X - screenPadding;
+        var spaceRight    = displaySize.X - _tooltipWindowMax.X - screenPadding;
+        var anchorOnRight = spaceRight >= spaceLeft;
+        var anchorTop     = MathF.Round(Math.Max(screenPadding, rowTop));
+        var anchorBottom  = MathF.Round(Math.Min(displaySize.Y - screenPadding, rowBottom));
+        if (anchorBottom <= anchorTop)
+            return false;
+
+        var anchorX = anchorOnRight
+            ? MathF.Round(Math.Min(displaySize.X - screenPadding - anchorWidth, _tooltipWindowMax.X))
+            : MathF.Round(Math.Max(screenPadding, _tooltipWindowMin.X - anchorWidth));
+        anchorMin   = new Vector2(anchorX, anchorTop);
+        anchorMax   = new Vector2(anchorX + anchorWidth, anchorBottom);
+        expandRight = anchorOnRight;
+        return true;
     }
 
     private void DrawVendorBuyListPopup(MaterialEntry entry, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
